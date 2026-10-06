@@ -1,0 +1,233 @@
+/* Lienzo principal: tamaño, dibujo de planos, marcas y sellos, y copias reducidas para dibujar rápido. */
+import { $, ST, txtOn } from '../core/constants.js';
+import { align, cur, gesture, hover, L, RT, S, sel, view } from '../core/state.js';
+import { M, rectPts, toWorld, w2s } from '../core/geometry.js';
+import { drawTable } from './tables.js';
+import { locOf } from '../core/levels.js';
+import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
+import { drawAutoHighlights } from '../detect/vector.js';
+
+/* ---------- lienzo ---------- */
+export let stage;
+export let cv;
+
+export let ctx;
+
+export let VM = [1, 0, 0, 1, 0, 0];
+export let UI = 1;
+export let EXPORT = false;
+
+export function dev(w) { return [VM[0]*w[0] + VM[2]*w[1] + VM[4], VM[1]*w[0] + VM[3]*w[1] + VM[5]]; }
+
+export let dpr = 1;
+export let CW = 0;
+export let CH = 0;
+
+export function resize() {
+  const r = stage.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5); CW = r.width; CH = r.height;
+  cv.width = Math.max(1, Math.round(CW*dpr)); cv.height = Math.max(1, Math.round(CH*dpr));
+  cv.style.width = CW + 'px'; cv.style.height = CH + 'px';
+  dirty();
+}
+
+export let rafPending = false;
+
+export function dirty() { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; draw(); }); } }
+
+export function setWorld(p) {
+  ctx.setTransform(VM[0], VM[1], VM[2], VM[3], VM[4], VM[5]);
+  const m = M(p); ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+}
+
+export let measureCtx;
+
+export function textW(m) { measureCtx.font = `600 ${m.size}px Barlow, sans-serif`; return measureCtx.measureText(m.text).width; }
+
+export function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  VM = [dpr*view.z, 0, 0, dpr*view.z, dpr*view.x, dpr*view.y]; UI = dpr;
+  for (const k of ['A', 'B']) drawPlan(k);
+  if (!solo) drawAutoHighlights();
+  const seals = solo ? [] : drawLayers(true);
+  if (cur) { const l = L(cur.layer); if (l) { const p = frameOf(cur); setWorld(p); drawMark(cur, l, p, false); } }
+  for (const [m, p] of seals) drawSeal(m, p, sel.has(m.id));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // línea elástica de la polilínea
+  if (cur && cur.type === 'poly' && hover && !(gesture && gesture.kind === 'pan')) {
+    const l = L(cur.layer), p = frameOf(cur), last = w2s(...toWorld(p, cur.pts[cur.pts.length-1]));
+    ctx.strokeStyle = l.color; ctx.globalAlpha = .6; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(hover[0], hover[1]); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    for (const q of cur.pts) { const s = w2s(...toWorld(p, q)); ctx.fillStyle = '#fff'; ctx.strokeStyle = l.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 4, 0, 7); ctx.fill(); ctx.stroke(); }
+  }
+  if (!solo) for (const f of S.floors) {
+    const r = floorRectWorld(f), a = w2s(r[0], r[1]), b = w2s(r[2], r[3]);
+    ctx.strokeStyle = 'rgba(122,76,194,.75)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+    ctx.strokeRect(a[0], a[1], b[0]-a[0], b[1]-a[1]); ctx.setLineDash([]);
+    ctx.font = '600 12px Barlow, sans-serif'; ctx.fillStyle = '#7A4CC2'; ctx.fillText(f.name, a[0] + 6, a[1] + 15);
+  }
+  if (S.auto.zone && !S.floors.length && !solo && !(gesture && gesture.kind === 'zone')) {
+    const z = S.auto.zone, a = w2s(z[0], z[1]), b = w2s(z[2], z[3]);
+    ctx.strokeStyle = '#7A4CC2'; ctx.lineWidth = 1.5; ctx.setLineDash([8, 5]);
+    ctx.strokeRect(a[0], a[1], b[0]-a[0], b[1]-a[1]); ctx.setLineDash([]);
+    ctx.font = '600 12px Barlow, sans-serif'; ctx.fillStyle = '#7A4CC2'; ctx.fillText('Zona de búsqueda', a[0] + 6, a[1] - 6);
+  }
+  if (gesture && (gesture.kind === 'marquee' || gesture.kind === 'zone')) {
+    const [a, b] = [gesture.start, gesture.end];
+    ctx.fillStyle = 'rgba(30,111,184,.08)'; ctx.strokeStyle = '#1E6FB8'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));
+    ctx.strokeRect(Math.min(a[0], b[0]) + .5, Math.min(a[1], b[1]) + .5, Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));
+    ctx.setLineDash([]);
+  }
+  if (align) {
+    const labels = ['B1', 'A1', 'B2', 'A2'];
+    align.pts.forEach((w, i) => {
+      const s = w2s(...w), col = i % 2 === 0 ? '#1E6FB8' : '#C81E2B';
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(s[0]-11, s[1]); ctx.lineTo(s[0]+11, s[1]); ctx.moveTo(s[0], s[1]-11); ctx.lineTo(s[0], s[1]+11); ctx.stroke();
+      ctx.beginPath(); ctx.arc(s[0], s[1], 6, 0, 7); ctx.stroke();
+      ctx.font = '700 13px "Barlow Semi Condensed", Barlow, sans-serif'; ctx.fillStyle = col; ctx.fillText(labels[i], s[0]+9, s[1]-9);
+    });
+  }
+}
+
+export function drawLayers(useSel, keep) {
+  const seals = [];
+  for (const l of S.layers) {
+    if (!l.visible) continue;
+    for (const m of S.marks) {
+      if (m.layer !== l.id) continue;
+      const p = frameOf(m);
+      if (keep && !keep(m, p)) continue;
+      if (m.type === 'seal') { seals.push([m, p]); continue; }
+      setWorld(p);
+      drawMark(m, l, p, useSel && sel.has(m.id));
+    }
+  }
+  return seals;
+}
+
+export function drawPlan(k) {
+  const p = S.plans[k], rt = RT[k];
+  if (!rt.bmp || (!p.visible && solo !== k) || (solo && solo !== k)) return;
+  const src = p.tint && rt.tinted && !solo ? rt.tinted : rt.bmp;
+  for (const [fr, clip] of planFrames(k)) {
+    ctx.save(); setWorld(fr);
+    ctx.globalAlpha = solo ? 1 : p.opacity;
+    ctx.globalCompositeOperation = p.blend === 'multiply' ? 'multiply' : 'source-over';
+    blitPart(src, p, fr, clip);
+    ctx.restore();
+  }
+}
+
+/* Dibujo rápido: copias reducidas de la imagen para cuando la vista está alejada,
+   y solo el trozo de imagen que corresponde a cada planta (sin recortes por máscara). */
+export let mipCache;
+
+export let lastWheel = 0;
+
+export function interacting() { return !!gesture || performance.now() - lastWheel < 220; }
+
+export function mipLevel(src, level) {
+  let arr = mipCache.get(src);
+  if (!arr) { arr = [src]; mipCache.set(src, arr); }
+  while (arr.length <= level) {
+    const prev = arr[arr.length - 1];
+    if (prev.width < 512 || prev.height < 512) break;
+    const c = document.createElement('canvas'); c.width = Math.ceil(prev.width/2); c.height = Math.ceil(prev.height/2);
+    const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, c.width, c.height);
+    arr.push(c);
+  }
+  return arr[Math.min(level, arr.length - 1)];
+}
+
+export function blitPart(src, p, fr, clip) {
+  let img = src;
+  if (!EXPORT) {
+    const devPerUnit = Math.abs(VM[0])*fr.s || 1, ratio = (src.width/p.w)/devPerUnit;
+    const level = Math.max(0, Math.min(5, Math.floor(Math.log2(Math.max(1, ratio)))));
+    img = mipLevel(src, level);
+  }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = EXPORT || !interacting() ? 'high' : 'low';
+  const kx = img.width/p.w, ky = img.height/p.h;
+  if (!clip) { ctx.drawImage(img, 0, 0, p.w, p.h); return; }
+  const x0 = Math.max(0, clip[0]), y0 = Math.max(0, clip[1]), x1 = Math.min(p.w, clip[2]), y1 = Math.min(p.h, clip[3]);
+  if (x1 <= x0 || y1 <= y0) return;
+  ctx.drawImage(img, x0*kx, y0*ky, (x1-x0)*kx, (y1-y0)*ky, x0, y0, x1-x0, y1-y0);
+}
+
+export function drawMark(m, l, p, isSel) {
+  if (m.type === 'table') return drawTable(m, p, isSel);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (m.type === 'text') {
+    const [x, y] = m.pts[0];
+    ctx.font = `600 ${m.size}px Barlow, sans-serif`; ctx.textBaseline = 'top';
+    if (isSel) { const pad = m.size*.2; ctx.fillStyle = 'rgba(242,183,5,.45)'; ctx.fillRect(x-pad, y-pad, textW(m)+pad*2, m.size*1.2+pad*2); }
+    ctx.lineWidth = m.size*.2; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(m.text, x, y);
+    ctx.fillStyle = m.color || l.color; ctx.fillText(m.text, x, y);
+    return;
+  }
+  const color = m.color || l.color, isHl = m.type === 'hl';
+  const passes = isSel ? [['rgba(242,183,5,.6)', m.w + 12/(view.z*p.s), false], [color, m.w, isHl]] : [[color, m.w, isHl]];
+  for (const [col, w, hl] of passes) {
+    ctx.save();
+    if (hl) { ctx.globalAlpha = m.alpha ?? 0.4; ctx.globalCompositeOperation = 'multiply'; ctx.lineCap = 'butt'; }
+    else if (col === color && m.alpha != null) ctx.globalAlpha = m.alpha;
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath();
+    const pts = m.type === 'rect' ? rectPts(m) : m.pts;
+    pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    if (pts.length === 1) ctx.lineTo(pts[0][0] + .01, pts[0][1]);
+    if (m.type === 'rect') ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+export function drawSeal(m, p, isSel) {
+  const d = dev(toWorld(p, m.pts[0]));
+  if (!EXPORT && (d[0] < -60 || d[1] < -60 || d[0] > cv.width+60 || d[1] > cv.height+60)) return;
+  ctx.setTransform(UI, 0, 0, UI, d[0], d[1]);
+  const x = 0, y = 0, t = ST[m.st], r = 13;
+  if (isSel) { ctx.beginPath(); ctx.arc(x, y, r+6, 0, 7); ctx.fillStyle = 'rgba(242,183,5,.6)'; ctx.fill(); }
+  if (m.review) { ctx.setLineDash([4, 3]); ctx.strokeStyle = '#FF7A00'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r+5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  if (m.st === 'pend') { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r+3.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  ctx.beginPath(); if (locOf(m) === 'losa') { const q = r*0.9; ctx.roundRect ? ctx.roundRect(x-q, y-q, q*2, q*2, q*0.25) : ctx.rect(x-q, y-q, q*2, q*2); } else ctx.arc(x, y, r, 0, Math.PI*2); const sa = Math.max(0.15, Math.min(1, S.sealAlpha ?? 1));
+  ctx.save(); ctx.globalAlpha = sa; ctx.fillStyle = t.color; ctx.fill();
+  ctx.globalAlpha = Math.min(1, sa + 0.25); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `700 ${m.n >= 100 ? 10.5 : 13}px "Barlow Semi Condensed", Barlow, sans-serif`;
+  if (sa < 0.95) { ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = txtOn(t.color) === '#ffffff' ? t.color : '#ffffff'; ctx.strokeText(String(m.n), x, y + .5); }
+  ctx.fillStyle = txtOn(t.color); ctx.fillText(String(m.n), x, y + .5);
+  if (S.showDiam && m.diam) {
+    const txt = m.diam.replace(' mm', ''); ctx.font = '700 11px "Barlow Semi Condensed", Barlow, sans-serif';
+    const tw = ctx.measureText(txt).width, bx = r + 4, bh = 15;
+    ctx.save(); ctx.globalAlpha = Math.min(1, sa + 0.2);
+    ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.strokeStyle = t.color; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, -bh/2, tw + 8, bh, 4) : ctx.rect(bx, -bh/2, tw + 8, bh); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = '#21272C'; ctx.textAlign = 'left'; ctx.fillText(txt, bx + 4, 0.5);
+  }
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+}
+
+/* Acceso de escritura para otros módulos (los import de ES son de solo lectura). */
+export const renderVars = {
+  get lastWheel() { return lastWheel; }, set lastWheel(v) { lastWheel = v; },
+  get ctx() { return ctx; }, set ctx(v) { ctx = v; },
+  get EXPORT() { return EXPORT; }, set EXPORT(v) { EXPORT = v; },
+  get UI() { return UI; }, set UI(v) { UI = v; },
+  get VM() { return VM; }, set VM(v) { VM = v; },
+};
+
+/* Se ejecuta una vez al arrancar, en el orden original (ver main.js). */
+export function init() {
+  stage = $('#stage');
+  cv = $('#cv');
+  ctx = cv.getContext('2d');
+  new ResizeObserver(resize).observe(stage);
+  addEventListener('resize', () => { if (innerWidth > 820) { $('#panel').classList.remove('open'); $('#backdrop').classList.remove('open'); } });
+  measureCtx = document.createElement('canvas').getContext('2d');
+  mipCache = new WeakMap();
+}

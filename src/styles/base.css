@@ -1,0 +1,26 @@
+:root{
+  --mesa:#E3E5DF; --mesa-dot:#C9CDC5; --panel:#FAFAF7; --panel-2:#EFF0EB; --tinta:#21272C; --tinta-2:#5A6268;
+  --linea:#D3D6CF; --rojo:#C81E2B; --rojo-2:#FBE6E7; --foco:#1E6FB8; --sel:#F2B705; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --mesa:#191C1F; --mesa-dot:#2A2F34; --panel:#22272B; --panel-2:#2B3136; --tinta:#E6E8E4; --tinta-2:#A1A8AE;
+    --linea:#3A4147; --rojo:#E2434F; --rojo-2:#3B2327; --foco:#5AA2E6; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --mesa:#191C1F; --mesa-dot:#2A2F34; --panel:#22272B; --panel-2:#2B3136; --tinta:#E6E8E4; --tinta-2:#A1A8AE;
+  --linea:#3A4147; --rojo:#E2434F; --rojo-2:#3B2327; --foco:#5AA2E6; color-scheme:dark;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--panel);color:var(--tinta);font:15px/1.45 Barlow,"Segoe UI",Roboto,system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--foco);outline-offset:2px}
+[hidden]{display:none!important}
+
+#app{height:100%;display:grid;grid-template-columns:64px minmax(0,1fr) 340px;grid-template-rows:54px minmax(0,1fr);
+  grid-template-areas:"top top top" "tools stage panel"}
+

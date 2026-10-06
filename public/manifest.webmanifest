@@ -1,0 +1,31 @@
+{
+  "name": "Sellos cortafuego",
+  "short_name": "Cortafuego",
+  "description": "Superposición de planos para marcar y cuantificar sellos cortafuego, con exportación a Firestop Suite.",
+  "lang": "es",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#EFF0EB",
+  "theme_color": "#FAFAF7",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "application/zip": [".zip"]
+      }
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}

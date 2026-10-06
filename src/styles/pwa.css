@@ -1,0 +1,3 @@
+/* aviso de versión nueva */
+#updBar{position:fixed;left:50%;top:calc(66px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;background:var(--panel);border:1px solid var(--linea);border-radius:12px;padding:8px 10px 8px 14px;box-shadow:0 10px 30px rgba(20,24,28,.18);font-size:14.5px;max-width:calc(100% - 24px)}
+#updBar .btn{height:34px}
