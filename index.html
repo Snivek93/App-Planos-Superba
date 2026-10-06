@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sellos cortafuego</title>
+<meta name="description" content="Superposición de planos arquitectónicos e instalaciones para marcar y cuantificar sellos cortafuego, con exportación a Firestop Suite.">
+<meta name="theme-color" content="#FAFAF7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#22272B" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cortafuego">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="%APP_CSS%">
+<script type="module" src="%APP_JS%"></script>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <button class="tbtn solid" id="btnHome" title="Inicio del proyecto"></button>
+    <select id="sheetSel" aria-label="Juego de planos"></select>
+    <button class="count-tag" id="countTag" title="Ver lista de sellos"><b id="countNum">0</b><span id="countTxt">sellos</span></button>
+    <div class="spacer"></div>
+    <button class="tbtn" id="btnUndo" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"></button>
+    <button class="tbtn" id="btnRedo" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer"></button>
+    <div id="menuWrap">
+      <button class="tbtn solid" id="btnMenu" aria-haspopup="true" aria-expanded="false">Archivo</button>
+      <div id="menu" hidden role="menu">
+        <button data-m="home">Inicio del proyecto</button>
+        <hr>
+        <button data-m="addArq">Agregar arquitectónicos</button>
+        <button data-m="newPair">Nuevo plano de instalaciones</button>
+        <hr>
+        <button data-m="save">Descargar proyecto (.zip)</button>
+        <button data-m="open">Abrir proyecto</button>
+        <hr>
+        <button data-m="csv">Exportar lista de sellos (CSV)</button>
+        <button data-m="fss">Excel para Firestop Suite (.xlsx)</button>
+        <button data-m="pdf">Descargar PDF del plano con marcas</button>
+        <button data-m="png">Exportar vista actual (PNG)</button>
+        <hr>
+        <button data-m="new" class="danger">Nuevo proyecto</button>
+      </div>
+    </div>
+    <button class="tbtn solid" id="btnPanel" aria-label="Abrir panel"></button>
+  </header>
+
+  <nav id="tools" aria-label="Herramientas"></nav>
+
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="opts"></div>
+    <div id="zoom">
+      <button id="zOut" aria-label="Alejar"></button>
+      <button id="zFit" aria-label="Ajustar a la pantalla" title="Ajustar (F)"></button>
+      <button id="zIn" aria-label="Acercar"></button>
+    </div>
+    <div id="empty"></div>
+  </main>
+
+  <aside id="panel" aria-label="Panel">
+    <div id="tabs" role="tablist">
+      <button data-tab="planos" role="tab">Planos</button>
+      <button data-tab="capas" role="tab">Capas</button>
+      <button data-tab="sellos" role="tab">Sellos<span class="n" id="tabN">0</span></button>
+      <button data-tab="auto" role="tab">Detección</button>
+    </div>
+    <div class="tabbody" id="tab-planos"></div>
+    <div class="tabbody" id="tab-capas" hidden>
+      <div style="display:flex;align-items:center;gap:8px">
+        <h3 style="flex:1">Capas de marcas</h3>
+        <button class="btn" id="addLayer">Nueva capa</button>
+      </div>
+      <p class="help">Cada capa va pegada a un plano: si mueve o alinea el plano B, sus marcas lo siguen. La capa con borde es donde se dibuja.</p>
+      <ul id="layers"></ul>
+    </div>
+    <div class="tabbody" id="tab-sellos" hidden></div>
+    <div class="tabbody" id="tab-auto" hidden></div>
+  </aside>
+</div>
+<div id="backdrop"></div>
+<div id="home" hidden>
+  <header class="hbar">
+    <div class="hbrand" id="hBrand"></div>
+    <div class="spacer"></div>
+    <button class="btn" data-pa="openProj">Abrir</button>
+    <button class="btn" data-pa="saveProj">Descargar .zip</button>
+    <button class="btn ghost-red" data-pa="newProj">Nuevo</button>
+  </header>
+  <div id="homeBody"></div>
+</div>
+
+<div id="modal" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h2 id="mTitle"></h2>
+    <p id="mBody"></p>
+    <div id="mHtml"></div>
+    <input id="mInput" type="text" hidden>
+    <div class="actions" id="mActions"></div>
+  </div>
+</div>
+<div id="toast" hidden role="status"></div>
+
+<input type="file" id="fileOne" accept="application/pdf,.pdf,image/*" hidden>
+<input type="file" id="fileMulti" accept="application/pdf,.pdf,image/*" multiple hidden>
+<input type="file" id="fileProject" accept=".zip,application/zip,.json,application/json" hidden>
+<input type="file" id="fileArq" accept="application/pdf,.pdf,image/*" multiple hidden>
+<input type="file" id="fileB" accept="application/pdf,.pdf,image/*" multiple hidden>
+<div id="dropHint" hidden></div>
+<noscript><p style="padding:20px">Esta app necesita JavaScript.</p></noscript>
+</body>
+</html>

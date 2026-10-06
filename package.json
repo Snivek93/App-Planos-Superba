@@ -1,0 +1,22 @@
+{
+  "name": "sellos-cortafuego",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Superposición de planos para marcar y cuantificar sellos cortafuego, con exportación a Firestop Suite.",
+  "type": "module",
+  "scripts": {
+    "dev": "node build.mjs --dev",
+    "build": "node build.mjs",
+    "preview": "npx --yes serve dist"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.2.108"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
