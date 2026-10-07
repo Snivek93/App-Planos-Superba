@@ -44,6 +44,7 @@ export function renderAuto() {
         ${[['diam', 'Por diámetro (ø13 mm, ø19 mm…)'], ['both', 'Por tubería y diámetro'], ['sys', 'Por tubería'], ['pend', 'Por definir']].map(([v, t]) => `<option value="${v}"${a.catMode === v ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
       <label class="chk"><input type="checkbox" data-act="showDiam"${S.showDiam ? ' checked' : ''}> Mostrar el diámetro junto a cada sello</label>
       <label class="chk"><input type="checkbox" data-act="show"${a.show ? ' checked' : ''}> Resaltar en el plano lo que se detectó</label>
+      <div class="field" style="grid-template-columns:150px 1fr auto"><label>Opacidad de la marca de paredes</label><input type="range" min="0" max="1" step="0.05" value="${a.hlOp ?? 0.8}" data-act="hlOp" aria-label="Opacidad de la marca de paredes cortafuego"><output>${Math.round((a.hlOp ?? 0.8)*100)} %</output></div>
       <div class="btnrow"><button class="btn red" data-act="run">Detectar cruces automáticamente</button><button class="btn" data-act="clearAuto">Quitar sellos automáticos</button></div>
       ${a.last ? `<p class="help">${esc(a.last)}</p>` : ''}
       <p class="help">Los sellos marcados con anillo naranja son casos dudosos: la tubería parece correr a lo largo de la pared en vez de atravesarla. El diámetro se toma del rótulo más cercano, revíselo en la lista de sellos.</p></div>`;
@@ -74,6 +75,10 @@ export function init() {
     else if (a === 'zoneClear') { S.auto.zone = null; save(); renderAuto(); dirty(); }
     else if (a === 'run') { closePanel(); runAuto(); }
     else if (a === 'clearAuto') clearAutoSeals();
+  });
+  ta.addEventListener('input', e => {
+    const t = e.target; if (t.dataset.act !== 'hlOp') return;
+    S.auto.hlOp = +t.value; t.nextElementSibling.textContent = Math.round(t.value*100) + ' %'; save(); dirty();
   });
   ta.addEventListener('change', e => {
     const t = e.target, a = t.dataset.act;

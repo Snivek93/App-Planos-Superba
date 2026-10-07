@@ -9,6 +9,12 @@ import { DB } from '../core/storage.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
+/* Opacidad elegida para la marca de paredes cortafuego (0 a 1; 80 % por defecto).
+   Devuelve la del rojo y la del aclarado de la pared que va debajo. */
+export function fireAlpha(withKo) {
+  const v = Math.max(0, Math.min(1, S.auto.hlOp ?? 0.8));
+  return withKo ? {red: v, ko: Math.min(1, v/0.8)} : {red: v*0.625, ko: 0};
+}
 
 export const PIPE_HL = ['#00A3FF', '#FF7A00', '#00B85C', '#C04BF2', '#E6B800', '#FF4FA3'];
 
@@ -461,7 +467,8 @@ export function drawAutoHighlights() {
     const p = S.plans[k];
     for (const [fr, clip] of planFrames(k)) {
       ctx.save(); setWorld(fr);
-      ctx.globalAlpha = k === 'A' ? (o.ko ? 0.78 : 0.5) : 0.8;
+      ctx.globalAlpha = k === 'A' ? fireAlpha(!!o.ko).red : 0.8;
+      if (!ctx.globalAlpha) { ctx.restore(); continue; }
       blitPart(o.c, p, fr, clip);
       ctx.restore();
     }
@@ -472,7 +479,8 @@ export function drawAutoHighlights() {
 export function drawKnockout(k, p, fr, clip) {
   if (k !== 'A' || !S.auto.show || solo) return;
   const o = RT.A.vec ? overlayFor('A') : null; if (!o || !o.ko) return;
-  ctx.save(); ctx.globalAlpha = p.opacity ?? 1; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();
+  const ka = fireAlpha(true).ko; if (!ka) return;
+  ctx.save(); ctx.globalAlpha = (p.opacity ?? 1)*ka; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();
 }
 export function needVecInBackground() {
   for (const [r] of autoRules()) {

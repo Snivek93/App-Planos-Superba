@@ -7,7 +7,7 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, toast } from '../ui/app.js';
 import { floorAtWorld, planFrames } from '../plans/floors.js';
-import { apT, ensureVec, mulT, overlayCanvas } from '../detect/vector.js';
+import { apT, ensureVec, fireAlpha, mulT, overlayCanvas } from '../detect/vector.js';
 import { ensurePdf } from '../plans/load.js';
 
 /* ---------- PDF vectorial: las marcas se escriben como líneas y texto del PDF, no como imagen ---------- */
@@ -203,7 +203,7 @@ export async function exportPDFVector(k, withOther, opt) {
         ctx.clip('evenodd');
       }
       if (hlImgs.ko) {
-        const hp = S.plans.A; ctx.save(); setWorld(hp); g._gs(1);
+        const hp = S.plans.A; ctx.save(); setWorld(hp); g._gs(fireAlpha(true).ko);
         g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hlImgs.ko), P.popGraphicsState());
         ctx.restore();
       }
@@ -221,7 +221,7 @@ export async function exportPDFVector(k, withOther, opt) {
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          g._gs(hk === 'A' ? (hlImgs.ko ? 0.78 : 0.55) : 0.85);
+          g._gs(hk === 'A' ? fireAlpha(!!hlImgs.ko).red : 0.85);
           g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hi), P.popGraphicsState());
           ctx.restore();
         }
@@ -288,7 +288,7 @@ export async function exportPDF(k, withOther, opt = {}) {
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(rt.bmp, 0, 0, p.w, p.h); ctx.restore();
     const ocA = k === 'A' && hlRules.some(([r, f]) => f && r.plan === 'A') ? overlayCanvas('A', hlRules.filter(([r]) => r.plan === 'A'), 6000) : null;
-    if (ocA && ocA.ko) { ctx.save(); ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.drawImage(ocA.ko, 0, 0, p.w, p.h); ctx.restore(); }
+    if (ocA && ocA.ko) { ctx.save(); ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.globalAlpha = fireAlpha(true).ko; ctx.drawImage(ocA.ko, 0, 0, p.w, p.h); ctx.restore(); }
     const other = k === 'A' ? 'B' : 'A', po = S.plans[other];
     const invS = fr => { const q = M(fr), dt = q[0]*q[3] - q[1]*q[2]; return [q[3]/dt, -q[1]/dt, -q[2]/dt, q[0]/dt, (q[2]*q[5] - q[3]*q[4])/dt, (q[1]*q[4] - q[0]*q[5])/dt].map(v => v*sc); };
     // piezas: con plantas, cada planta del plano B tiene su propia transformación
@@ -314,7 +314,7 @@ export async function exportPDF(k, withOther, opt = {}) {
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          ctx.globalAlpha = hk === 'A' ? (ocA && ocA.ko ? 0.78 : 0.55) : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
+          ctx.globalAlpha = hk === 'A' ? fireAlpha(!!(ocA && ocA.ko)).red : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
           ctx.restore();
         }
       }
