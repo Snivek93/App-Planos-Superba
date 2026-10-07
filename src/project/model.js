@@ -6,6 +6,7 @@ import { save } from '../core/storage.js';
 import { closePanel } from '../ui/app.js';
 import { closeSheet } from './sheets.js';
 import { renderProject } from '../home/home.js';
+import { compactSealNumbers } from '../panels/sellos.js';
 
 /* ---------- arranque ---------- */
 /* =====================================================================
@@ -107,6 +108,8 @@ export function hydrate(o) {
   if (!P.sections.find(s => s.id === 'arq')) P.sections.unshift({id:'arq', name:'Arquitectónicos', kind:'arq', subs:[]});
   P.sheets = P.sheets || {}; P.files = P.files || {}; P.uid = P.uid || 1000;
   for (const sh of Object.values(P.sheets)) sh.state = normState(sh.state);
+  // numeración sin huecos también en planos marcados con versiones anteriores
+  for (const sh of Object.values(P.sheets)) withState(sh.state, compactSealNumbers);
   if (P.active && !P.sheets[P.active]) P.active = null;
   return P;
 }

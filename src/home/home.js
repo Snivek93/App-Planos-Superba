@@ -28,6 +28,9 @@ function thumbOf(sh) {
   const pl = sh.kind === 'arq' ? sh.state.plans.A : sh.state.plans.B;
   return pl && pl.fileId ? pl.fileId + '#' + (pl.page || 1) : '';
 }
+/* botón mínimo para agregar: solo el signo +, con el texto como ayuda al pasar el mouse */
+function addTile(act, label) { return `<li class="taddli"><button class="tadd" data-pa="${act}" title="${label}" aria-label="${label}"><span aria-hidden="true">+</span></button></li>`; }
+
 export function itemHtml(sh, T) {
   const t = T[sh.id], last = P.last === sh.id, grid = (P.layout || 'grid') === 'grid';
   let meta, q = '';
@@ -41,11 +44,11 @@ export function itemHtml(sh, T) {
   const th = thumbOf(sh);
   const acts = `<span class="tacts"><button class="icon" data-pa="rename" title="Cambiar nombre" aria-label="Cambiar nombre de ${esc(sh.name)}">${ICON.edit}</button><button class="icon" data-pa="item" title="Opciones" aria-label="Opciones de ${esc(sh.name)}">${ICON.more}</button></span>`;
   const drag = sh.kind === 'pair' ? ' draggable="true"' : '';
-  if (grid) return `<li class="tile card${last ? ' last' : ''}" data-sheet="${sh.id}"${drag}><button class="tmain" data-pa="openSheet" title="${esc(sh.name)}">
+  if (grid) return `<li class="tile card${last ? ' last' : ''}" data-sheet="${sh.id}"${drag}><button class="tmain" data-pa="openSheet" title="${esc(sh.name)}${meta ? ' · ' + esc(meta) : ''}">
       <span class="tthumb">${th ? `<img data-thumb="${esc(th)}" alt="" draggable="false">` : ''}<span class="tph">Preparando vista previa…</span></span>
-      <span class="tbody"><span class="tname">${esc(sh.name).replace(/_/g, '_<wbr>')}</span><span class="tmeta">${esc(meta)}${last ? ' · último abierto' : ''}</span></span></button>
+      <span class="tbody"><span class="tname">${esc(sh.name).replace(/_/g, '_<wbr>')}</span></span></button>
     ${q}${acts}</li>`;
-  return `<li class="tile${last ? ' last' : ''}" data-sheet="${sh.id}"${drag}><button class="tmain" data-pa="openSheet" title="Abrir ${esc(sh.name)}"><span class="tname">${esc(sh.name)}</span><span class="tmeta">${esc(meta)}${last ? ' · último abierto' : ''}</span></button>
+  return `<li class="tile${last ? ' last' : ''}" data-sheet="${sh.id}"${drag}><button class="tmain" data-pa="openSheet" title="${esc(meta)}"><span class="tname">${esc(sh.name)}</span></button>
     ${q}${acts}</li>`;
 }
 
@@ -98,15 +101,14 @@ export function renderProject() {
       <input data-pa="secName" value="${esc(s.name)}" aria-label="Nombre de la sección"${arq ? ' readonly' : ''}>
       ${per[s.id] ? `<span class="pcount" title="Sellos en la sección">${per[s.id]}</span>` : ''}
       ${arq ? '' : `<button class="icon" data-pa="secUp" title="Subir sección"${i <= 1 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="secDown" title="Bajar sección"${i === P.sections.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="addSub" title="Agregar subsección">＋</button><button class="icon" data-pa="secDel" title="Eliminar sección">${ICON.trash}</button>`}</header>`;
-    if (arq) h += `<p class="help" style="margin:2px 0 0">Plantas de paredes (plano A). Las paredes cortafuego se marcan aquí y aparecen en todos los planos que usen cada hoja.</p>`;
     const root = sheetsOf(s.id, null);
-    if (arq) h += tiles(root, `<li><button class="tadd" data-pa="addArq" style="width:100%">＋ Agregar arquitectónicos</button></li>`);
-    else if (root.length || !s.subs.length) h += tiles(root, `<li><button class="tadd" data-pa="newPair" style="width:100%">＋ Agregar plano${s.subs.length ? ' sin subsección' : ''}</button></li>`);
+    if (arq) h += tiles(root, addTile('addArq', 'Agregar arquitectónicos'));
+    else if (root.length || !s.subs.length) h += tiles(root, addTile('newPair', s.subs.length ? 'Agregar plano sin subsección' : 'Agregar plano'));
     for (const [j, u] of s.subs.entries()) {
       h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" aria-label="Nombre de la subsección">
         <label class="subbelow" title="Las tuberías corren bajo la losa: las paredes que cruzan son del nivel inferior"><input type="checkbox" data-pa="subBelow"${u.below ? ' checked' : ''}> <span class="lt">Tuberías</span> bajo losa</label>
         <button class="icon" data-pa="subUp" title="Subir"${j === 0 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="subDown" title="Bajar"${j === s.subs.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="subDel" title="Eliminar subsección">${ICON.trash}</button></header>
-        ${tiles(sheetsOf(s.id, u.id), `<li><button class="tadd" data-pa="newPair" style="width:100%">＋ Agregar plano</button></li>`)}</div>`;
+        ${tiles(sheetsOf(s.id, u.id), addTile('newPair', 'Agregar plano'))}</div>`;
     }
     h += `</section>`;
   }

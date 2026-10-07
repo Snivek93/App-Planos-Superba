@@ -294,6 +294,65 @@ export function ruleCache(rule) {
 
 export function autoRules() { return [...S.auto.fire.map(r => [r, true]), ...S.auto.pipes.map(r => [r, false])]; }
 
+/* Comprobación final contra el plano dibujado: solo queda resaltado donde el plano realmente muestra
+   el color de la pared. Corrige lo que la lectura vectorial no puede saber: partes recortadas por el PDF,
+   imágenes o achurados dibujados encima, etc. (los recuadros en esquinas). Solo para estilos de relleno.
+   data: píxeles del resaltado (se modifican); plan: píxeles del plano en el mismo lugar. */
+export function maskByPlan(data, plan, W, H, colors) {
+  if (!colors.length) return;
+  const rgb = colors.map(c => { const n = parseInt(String(c).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
+  const T2 = 80*80, ok = new Uint8Array(W*H);
+  for (let i = 0, n = W*H; i < n; i++) {
+    if (!data[i*4+3]) continue;
+    const r = plan[i*4], g = plan[i*4+1], b = plan[i*4+2];
+    for (const c of rgb) { const dr = r - c[0], dg = g - c[1], db = b - c[2]; if (dr*dr + dg*dg + db*db < T2) { ok[i] = 1; break; } }
+  }
+  // tolerancia de 2 píxeles para bordes suavizados y achurados finos sobre la pared
+  const R = 2;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y*W + x;
+    if (!data[i*4+3] || ok[i]) continue;
+    let near = false;
+    for (let dy = -R; dy <= R && !near; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -R; dx <= R; dx++) { const xx = x + dx; if (xx >= 0 && xx < W && ok[yy*W + xx]) { near = true; break; } } }
+    if (!near) data[i*4+3] = 0;
+  }
+}
+/* Igual que maskByPlan, pero comparando contra el plano a su resolución completa (rt.bmp), para que
+   las paredes delgadas no se pierdan al reducir la imagen. data: resaltado W×H (escala W/bmp.width). */
+export function maskByPlanFull(data, W, H, bmp, colors) {
+  if (!colors.length) return;
+  const BW = bmp.width, BH = bmp.height, k = W/BW;
+  const t = document.createElement('canvas'); t.width = BW; t.height = BH;
+  const tg = t.getContext('2d', {willReadFrequently:true}); tg.drawImage(bmp, 0, 0);
+  const rgb = colors.map(c => { const n = parseInt(String(c).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
+  const T2 = 80*80, ok = new Uint8Array(W*H);
+  const STRIP = 256;
+  for (let sy = 0; sy < BH; sy += STRIP) {
+    const sh = Math.min(STRIP + 2, BH - sy), P = tg.getImageData(0, sy, BW, sh).data;
+    // filas del resaltado cuyo píxel cae en esta franja
+    const y0 = Math.floor(sy*k), y1 = Math.min(H - 1, Math.floor((sy + STRIP)*k));
+    for (let y = y0; y <= y1; y++) {
+      const ny0 = Math.max(sy, Math.floor(y/k) - 1), ny1 = Math.min(sy + sh - 1, Math.ceil((y + 1)/k));
+      for (let x = 0; x < W; x++) {
+        const i = y*W + x; if (!data[i*4+3] || ok[i]) continue;
+        const nx0 = Math.max(0, Math.floor(x/k) - 1), nx1 = Math.min(BW - 1, Math.ceil((x + 1)/k));
+        search: for (let ny = ny0; ny <= ny1; ny++) for (let nx = nx0; nx <= nx1; nx++) {
+          const j = ((ny - sy)*BW + nx)*4, r = P[j], g = P[j+1], b = P[j+2];
+          for (const c of rgb) { const dr = r - c[0], dg = g - c[1], db = b - c[2]; if (dr*dr + dg*dg + db*db < T2) { ok[i] = 1; break search; } }
+        }
+      }
+    }
+  }
+  t.width = t.height = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y*W + x; if (!data[i*4+3] || ok[i]) continue;
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++) { const yy = y + dy; if (yy < 0 || yy >= H) continue; for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx >= 0 && xx < W && ok[yy*W + xx]) { near = true; break; } } }
+    if (!near) data[i*4+3] = 0;
+  }
+}
+export function fillColors(rules) { return [...new Set(rules.filter(r => r.kind === 'f' && /^f#[0-9a-f]{6}/i.test(r.key || '')).map(r => r.key.slice(1, 8)))]; }
+
 /* Capa de resaltado de un plano (paredes en rojo, tuberías en su color), como imagen transparente. */
 export function overlayCanvas(k, rules, maxPx) {
   const rt = RT[k], p = S.plans[k];
@@ -305,6 +364,14 @@ export function overlayCanvas(k, rules, maxPx) {
   const c = document.createElement('canvas'); c.width = Math.ceil(p.w*sc); c.height = Math.ceil(p.h*sc);
   const g = c.getContext('2d'); g.setTransform(sc, 0, 0, sc, 0, 0);
   paintEvents(g, ev, r => fire.has(r) ? FIRE_HL : (r.hl || PIPE_HL[0]), (fire.size ? 1.5 : 2.6)/sc, fx);
+  const cols = fillColors(rules.map(([r]) => r));
+  if (cols.length && rt.bmp) {
+    try {
+      const g2 = c.getContext('2d', {willReadFrequently:true}), O = g2.getImageData(0, 0, c.width, c.height);
+      maskByPlanFull(O.data, c.width, c.height, rt.bmp, cols);
+      g2.putImageData(O, 0, 0);
+    } catch (e) { console.warn(e); }
+  }
   return {c, sc};
 }
 

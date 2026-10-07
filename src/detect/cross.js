@@ -6,7 +6,7 @@ import { placeSeal } from '../editor/pointer.js';
 import { pushUndo } from '../core/undo.js';
 import { changed, renderTop, toast } from '../ui/app.js';
 import { floorRectWorld, frameOf } from '../plans/floors.js';
-import { ensureLabels, ensureVec, fireEdits, paintEvents, ruleCache, visibleEvents } from './vector.js';
+import { ensureLabels, ensureVec, fillColors, fireEdits, maskByPlan, paintEvents, ruleCache, visibleEvents } from './vector.js';
 import { RT } from '../core/state.js';
 import { renderAuto } from '../panels/deteccion.js';
 
@@ -77,6 +77,14 @@ export async function runAuto() {
     const gf = mk();
     { const [f0, c0] = job.frames.A; paintRules(gf, fr, r => `rgb(${(fr.indexOf(r) + 1)*12},0,0)`, res, reg[0], reg[1], 1, f0, c0); }
     const F = gf.getImageData(0, 0, W, H).data;
+    if (RT.A.bmp) {
+      // misma comprobación que el resaltado: solo cuenta lo que en el plano A se ve del color de la pared
+      const gb = mk(), A = job.frames.A[0], mA = M(A), clipA = job.frames.A[1];
+      gb.setTransform(res, 0, 0, res, -reg[0]*res, -reg[1]*res); gb.transform(mA[0], mA[1], mA[2], mA[3], mA[4], mA[5]);
+      if (clipA) { gb.beginPath(); gb.rect(clipA[0], clipA[1], clipA[2]-clipA[0], clipA[3]-clipA[1]); gb.clip(); }
+      gb.drawImage(RT.A.bmp, 0, 0, A.w, A.h);
+      maskByPlan(F, gb.getImageData(0, 0, W, H).data, W, H, fillColors(fr));
+    }
     const gp = mk();
     const mark = new Uint8Array(W*H), stack = new Int32Array(W*H);
     pr.forEach(r => {
