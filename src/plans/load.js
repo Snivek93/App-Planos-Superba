@@ -8,7 +8,10 @@ import { renderPlans } from '../panels/planos.js';
 import { DB, save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { pathCache } from '../detect/vector.js';
-import { RT_BLANK } from '../project/model.js';
+import { curSheet, RT_BLANK } from '../project/model.js';
+import { reanchor } from '../editor/pointer.js';
+import { floorsVars } from './floors.js';
+import { syncLevelFloors } from './arqlevels.js';
 import { gcFiles, rtRemember, storeFile } from '../project/files.js';
 import { addArqFiles } from '../project/sheets.js';
 import { renderProject } from '../home/home.js';
@@ -166,6 +169,7 @@ export async function loadFile(k, blob, name, opt = {}) {
     if (fresh && P) { p.fileId = await storeFile(blob, name); rtRemember(rt, p.fileId, p.page); await gcFiles(); renderProject(); }
     if (toCache) cacheRender(p.fileId || opt.fileId, p.page, c, lw, lh, p.pages);
     if (fresh && !hadOther) fit();
+    if (fresh && k === 'B') { const sh = curSheet(); if (sh && sh.kind === 'pair' && syncLevelFloors(sh)) renderPlans(); }
     if (fresh && k === 'B' && hadOther) toast('Plano B cargado. Si no coincide con el A, use "Alinear con 2 puntos" en la pestaña Planos.');
   } catch (err) {
     console.error(err);
@@ -189,8 +193,15 @@ export function swapPlans() {
 }
 
 export async function removePlan(k) {
-  const ok = await ask({title:`Quitar plano ${k}`, body:'Se quita solo el archivo. Las marcas y capas se conservan.', buttons:[{label:'Cancelar', value:false}, {label:'Quitar', value:true, danger:true}]});
+  const nf = k === 'B' ? S.floors.length : 0;
+  const ok = await ask({title:`Quitar plano ${k}`, body:`Se quita el archivo${nf ? ` y ${nf === 1 ? 'su planta' : `sus ${nf} plantas`}` : ''}. Las marcas y capas se conservan.`, buttons:[{label:'Cancelar', value:false}, {label:'Quitar', value:true, danger:true}]});
   if (!ok) return;
+  if (nf) {
+    // las plantas son recortes del plano B: sin plano B no tienen sentido
+    pushUndo();
+    for (const m of S.marks) if (m.fl) { const f = S.floors.find(x => x.id === m.fl); if (f) reanchor(m, f.t, S.plans.B); m.fl = null; }
+    S.floors = []; floorsVars.solo = null;
+  }
   RT[k] = RT_BLANK();
   const keep = S.plans[k]; S.plans[k] = Object.assign(newPlan(), {opacity:keep.opacity, blend:keep.blend, tint:keep.tint, x:keep.x, y:keep.y, s:keep.s, r:keep.r});
   await gcFiles(); save(); renderPlans(); renderEmpty(); dirty();

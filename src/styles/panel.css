@@ -185,3 +185,8 @@ input[type=range]{width:100%;accent-color:var(--tinta)}
 .optsep{width:1px;align-self:stretch;background:var(--linea);flex:none}
 #opts input[type=range]{width:110px;flex:none}
 #opts output{min-width:38px;font-variant-numeric:tabular-nums}
+#mHtml .checks .lvsubs{display:flex;flex-wrap:wrap;gap:4px 14px;padding:2px 0 4px 26px}
+#mHtml .checks .lvsubs label{font-size:14px}
+.lvchips{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:6px 0 2px}
+.lvchips .chip{min-height:28px;padding:0 10px;border:1px solid var(--linea);border-radius:14px;background:transparent;font:inherit;font-size:13px;cursor:pointer}
+.lvchips .chip:hover{border-color:currentColor}

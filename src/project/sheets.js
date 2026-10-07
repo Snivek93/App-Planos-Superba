@@ -13,12 +13,13 @@ import { arqState, blankState, curSheet, hideHome, homeOn, isPdfFile, isPlanFile
 import { gcFiles, loadPlanFile, storeFile } from './files.js';
 import { commitShared, injectShared } from './shared.js';
 import { renderProject } from '../home/home.js';
-import { arqLevelOptions, lvlsOf, parseALevel, syncLevelFloors } from '../plans/arqlevels.js';
+import { arqLevelOptions, levelChecksHtml, lvlsOf, normEntries, parseALevel, readLevelChecks, setViewLevel, syncLevelFloors, wireLevelChecks } from '../plans/arqlevels.js';
 
 /* --- abrir hojas --- */
 export async function openSheet(id, opt = {}) {
   const sh = P.sheets[id]; if (!sh) return;
   commitShared(); hideHome();
+  if (P.active !== id) setViewLevel(null);
   P.active = id; P.last = id; stateVars.S = sh.state;
   if (sh.kind === 'pair') injectShared(sh);
   sel.clear(); stateVars.cur = null; stateVars.align = null; floorsVars.solo = null; floorsVars.floorDraft = null; stateVars.gesture = null; stateVars.undoStack = []; stateVars.redoStack = [];
@@ -42,7 +43,7 @@ export async function openSheet(id, opt = {}) {
 }
 
 export function closeSheet() {
-  commitShared(); P.active = null; stateVars.S = blankState(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
+  commitShared(); setViewLevel(null); P.active = null; stateVars.S = blankState(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
   stateVars.undoStack = []; stateVars.redoStack = []; sel.clear(); stateVars.cur = null; renderAll(); dirty();
 }
 
@@ -137,22 +138,23 @@ export async function chooseA() {
   const lvHtml = (aid, sel) => {
     const L = lvlsOf(P.sheets[aid]);
     if (!L.length) return '<p class="muted small" style="margin:0">Esta hoja no tiene niveles definidos: se usa completa. Los niveles se definen en la hoja de arquitectónicos, pestaña Planos.</p>';
-    return `<div class="checks">${L.map(l => `<label><input type="checkbox" value="${l.id}"${(sel || []).includes(l.id) ? ' checked' : ''}> ${esc(l.name)}${l.levels ? ` <span class="muted">(niveles ${esc(l.levels)})</span>` : ''}</label>`).join('')}</div>
-      <p class="muted small" style="margin:4px 0 0">Sin marcar ninguno se usa la hoja completa. Con uno, el plano A muestra solo ese nivel. Con varios, se crea una planta por nivel.</p>`;
+    return `<div class="checks">${levelChecksHtml(P.sheets[aid], sel)}</div>
+      <p class="muted small" style="margin:4px 0 0">Sin marcar ninguno se usa la hoja completa. Con uno, el plano A muestra solo ese nivel. Con varios, se crea una planta por nivel. En una planta típica puede marcar solo algunos de sus niveles (por ejemplo solo el 6).</p>`;
   };
   const v = await ask({title:'Plano A (arquitectónico)', body:'Las paredes marcadas en esa hoja de arquitectónicos aparecen en este plano.',
     html:`<label class="row"><span>Arquitectónico</span><select id="chA">${arqOptions(sh.aSheet)}</select></label><div class="row"><span class="muted small">Niveles</span><div id="chLv">${lvHtml(sh.aSheet, sh.aLevels)}</div></div>`,
-    setup: r => { const s = r.querySelector('#chA'); s.onchange = () => { r.querySelector('#chLv').innerHTML = lvHtml(s.value, s.value === sh.aSheet ? sh.aLevels : []); }; },
+    setup: r => { wireLevelChecks(r.querySelector('#chLv')); const s = r.querySelector('#chA'); s.onchange = () => { r.querySelector('#chLv').innerHTML = lvHtml(s.value, s.value === sh.aSheet ? sh.aLevels : []); }; },
     buttons:[{label:'Cancelar', value:null}, {label:'Usar este', value:'ok', primary:true}],
-    read: r => ({a: r.querySelector('#chA').value, lv: [...r.querySelectorAll('#chLv input:checked')].map(i => i.value)})});
+    read: r => { const a = r.querySelector('#chA').value; return {a, lv: normEntries(P.sheets[a], readLevelChecks(r.querySelector('#chLv')))}; }});
   if (!v) return;
   if (v.a !== sh.aSheet || v.lv.join(',') !== (sh.aLevels || []).join(',')) await setPairA(sh, v.a, v.lv);
 }
 
 export async function setPairA(sh, a, lv) {
   const sameA = a === sh.aSheet;
-  if (P.active !== sh.id) { sh.aSheet = a; sh.aLevels = lv || []; save(); renderProject(); return; }
-  commitShared(); sh.aSheet = a; sh.aLevels = lv || []; P.lastA = a; P.lastLv = sh.aLevels; injectShared(sh); pathCache.clear();
+  lv = normEntries(P.sheets[a], lv || []);
+  if (P.active !== sh.id) { sh.aSheet = a; sh.aLevels = lv; save(); renderProject(); return; }
+  commitShared(); sh.aSheet = a; sh.aLevels = lv; P.lastA = a; P.lastLv = sh.aLevels; injectShared(sh); pathCache.clear();
   if (!sameA) await loadPlanFile('A', S.plans.A.fileId, S.plans.A.page);
   const made = syncLevelFloors(sh);
   if (!sameA && S.floors.some(f => !f.src)) toast('Cambió el plano A: revise la alineación de las plantas.');
@@ -203,5 +205,6 @@ export function init() {
     else if (v === '__home') showHome();
     else if (v && v !== P.active) openSheet(v);
   });
+  $('#lvlSel').addEventListener('change', e => { setViewLevel(e.target.value); e.target.classList.toggle('on', !!e.target.value); fit(); dirty(); });
   $('#fileB').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; const t = pendingB || {}; pendingB = null; if (fs.length) addPairFiles(fs, t.sec, t.sub); });
 }

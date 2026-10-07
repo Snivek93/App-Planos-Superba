@@ -11,7 +11,8 @@ import { fitRect } from './floors.js';
 import { ensureText, floorsVars } from './floors.js';
 import { parseLevels, joinY } from '../core/levels.js';
 import { save } from '../core/storage.js';
-import { ask, changed, closePanel, toast } from '../ui/app.js';
+import { ask, changed, closePanel, renderTop, toast } from '../ui/app.js';
+import { fit } from '../canvas/view.js';
 import { setTool } from '../editor/tools.js';
 import { renderPlans } from '../panels/planos.js';
 import { ICON } from '../ui/icons.js';
@@ -28,6 +29,7 @@ export function arqLevelsHtml() {
     ${L.length ? `<ul class="floors">${L.map(l => `<li data-lvl="${l.id}">
       <div class="frow"><input data-act="lvName" value="${esc(l.name)}" aria-label="Nombre del nivel"><b class="fmult" title="Niveles que representa">×${Math.max(1, parseLevels(l.levels).length)}</b></div>
       <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles</span><input data-act="lvLevels" value="${esc(l.levels || '')}" placeholder="Ej.: 6, o 7, 8" aria-label="Niveles"></div>
+      ${regionLevels(l).length > 1 ? `<div class="lvchips"><span class="small muted">Ver:</span>${regionLevels(l).map(x => `<button class="chip" data-act="lvShow" data-v="${l.id}@${x}">${esc(x)}</button>`).join('')}</div>` : ''}
       <div class="small muted">${usersOf(l.id)}</div>
       <div class="btnrow"><button class="btn" data-act="lvView">Ver</button><button class="btn" data-act="lvRedraw">Redibujar</button><button class="icon" data-act="lvDel" title="Quitar nivel">${ICON.trash}</button></div></li>`).join('')}</ul>` : ''}
     <button class="btn primary" data-act="lvAdd">Agregar nivel</button></section>`;
@@ -80,17 +82,20 @@ export async function finishLevelRect(rw) {
   save(); renderPlans(); dirty();
   toast(`Nivel "${name}" agregado. Ya se puede elegir como plano A.`);
 }
-export async function levelsClick(a, li) {
+export async function levelsClick(a, li, btn) {
   const l = (S.lvls || []).find(x => x.id === li?.dataset.lvl);
   if (a === 'lvAdd') return startLevelRect(null);
   if (!l) return;
-  if (a === 'lvView') { closePanel(); fitRect(lvlRectWorld(l)); }
+  if (a === 'lvView') { viewLevel = l.id; closePanel(); renderTop(); fit(); dirty(); }
+  else if (a === 'lvShow') { viewLevel = btn?.dataset?.v || l.id; closePanel(); renderTop(); fit(); dirty(); }
   else if (a === 'lvRedraw') startLevelRect(l.id);
   else if (a === 'lvDel') {
-    const users = Object.values(P.sheets).filter(s => (s.aLevels || []).includes(l.id));
+    const mine = e => String(e).split('@')[0] === l.id;
+    const users = Object.values(P.sheets).filter(s => (s.aLevels || []).some(mine));
     const ok = await ask({title:'Quitar nivel', body: users.length ? `"${l.name}" se usa en ${users.length} ${users.length === 1 ? 'plano' : 'planos'}; esos planos pasarán a usar la hoja completa (o los demás niveles elegidos).` : `Se quita "${l.name}".`, buttons:[{label:'Cancelar', value:false}, {label:'Quitar', value:true, danger:true}]});
     if (!ok) return;
-    users.forEach(s => { s.aLevels = s.aLevels.filter(x => x !== l.id); });
+    users.forEach(s => { s.aLevels = s.aLevels.filter(x => !mine(x)); });
+    if (viewLevel && mine(viewLevel)) viewLevel = null;
     S.lvls = S.lvls.filter(x => x !== l); save(); renderPlans(); dirty();
   }
 }
@@ -103,7 +108,10 @@ export function levelsChange(t, li) {
 }
 /* recuadros de nivel dibujados sobre la hoja de arquitectónicos */
 export function drawLevelRects(ctx, w2s) {
-  for (const l of (S.lvls || [])) {
+  const v = viewLevelObj();
+  for (const l0 of (S.lvls || [])) {
+    if (v && v.region !== l0.id) continue;
+    const l = v ? {...l0, name: v.typical ? `${v.name} · planta típica (${l0.name})` : l0.name} : l0;
     const r = lvlRectWorld(l), a = w2s(r[0], r[1]), b = w2s(r[2], r[3]);
     ctx.strokeStyle = 'rgba(18,134,107,.85)'; ctx.lineWidth = 1.4; ctx.setLineDash([6, 4]);
     ctx.strokeRect(a[0], a[1], b[0]-a[0], b[1]-a[1]); ctx.setLineDash([]);
@@ -113,23 +121,103 @@ export function drawLevelRects(ctx, w2s) {
   }
 }
 
+/* --- niveles individuales de una planta típica ---
+   Un recuadro puede representar varios niveles ("Niveles 4 a 7"). Se puede usar completo o solo
+   algunos de sus niveles: la entrada "id@6" es el nivel 6 de ese recuadro (mismo dibujo, otro nivel). */
+export function regionLevels(l) { const lv = parseLevels(l.levels || ''); return lv.filter(x => /\d/.test(x)); }
+const lvName = lv => `${lv.length === 1 ? 'Nivel' : 'Niveles'} ${joinY(lv)}`;
+export function resolveEntry(arq, entry) {
+  const [id, sub] = String(entry).split('@'), l = lvlsOf(arq).find(x => x.id === id);
+  if (!l) return null;
+  if (!sub) return {...l, region:l.id};
+  const all = regionLevels(l), lv = sub.split(',').filter(x => all.includes(x));
+  if (!lv.length) return null;
+  if (lv.length === all.length) return {...l, region:l.id};
+  return {...l, id:entry, region:l.id, levels:lv.join(', '), name:lvName(lv), typical:l.name};
+}
+/* agrupa la selección: un recuadro completo, o los niveles sueltos de cada recuadro en una sola entrada */
+export function normEntries(arq, entries) {
+  const by = new Map();
+  for (const e of entries || []) {
+    const [id, sub] = String(e).split('@'); const l = lvlsOf(arq).find(x => x.id === id); if (!l) continue;
+    const cur = by.get(id) || {all:false, lv:new Set()};
+    if (!sub) cur.all = true; else sub.split(',').forEach(x => cur.lv.add(x));
+    by.set(id, cur);
+  }
+  const out = [];
+  for (const l of lvlsOf(arq)) {
+    const c = by.get(l.id); if (!c) continue;
+    const all = regionLevels(l), lv = all.filter(x => c.lv.has(x));
+    out.push(c.all || !all.length || lv.length === all.length ? l.id : `${l.id}@${lv.join(',')}`);
+  }
+  return out;
+}
+
 /* --- en el plano de instalaciones --- */
 export function aLevelObjs(sh) {
   const arq = P.sheets[sh.aSheet];
-  return (sh.aLevels || []).map(id => lvlsOf(arq).find(l => l.id === id)).filter(Boolean);
+  return (sh.aLevels || []).map(e => resolveEntry(arq, e)).filter(Boolean);
 }
-/* Opciones "hoja completa" y "hoja › nivel" para elegir el plano A en una lista. */
+/* Opciones "hoja completa", "hoja › recuadro" y "hoja › nivel suelto" para elegir el plano A en una lista. */
 export function arqLevelOptions(selA, selLv) {
   const cur = (selLv || []).join(',');
   return sheetsOf('arq').map(a => {
     const L = lvlsOf(a);
     let h = `<option value="${a.id}"${a.id === selA && !cur ? ' selected' : ''}>${esc(a.name)}${L.length ? ' (hoja completa)' : ''}</option>`;
-    h += L.map(l => `<option value="${a.id}|${l.id}"${a.id === selA && cur === l.id ? ' selected' : ''}>${esc(a.name)} › ${esc(l.name)}</option>`).join('');
-    if (a.id === selA && (selLv || []).length > 1) h += `<option value="${a.id}|${cur}" selected>${esc(a.name)} › ${esc(selLv.map(id => L.find(l => l.id === id)?.name).filter(Boolean).join(', '))}</option>`;
+    const vals = new Set();
+    for (const l of L) {
+      vals.add(l.id);
+      h += `<option value="${a.id}|${l.id}"${a.id === selA && cur === l.id ? ' selected' : ''}>${esc(a.name)} › ${esc(l.name)}</option>`;
+      const all = regionLevels(l);
+      if (all.length > 1) for (const x of all) { const v = `${l.id}@${x}`; vals.add(v); h += `<option value="${a.id}|${v}"${a.id === selA && cur === v ? ' selected' : ''}>${esc(a.name)} › Nivel ${esc(x)} (de ${esc(l.name)})</option>`; }
+    }
+    if (a.id === selA && cur && !vals.has(cur)) h += `<option value="${a.id}|${cur}" selected>${esc(a.name)} › ${esc(aLevelObjs({aSheet:a.id, aLevels:selLv}).map(l => l.name).join(', '))}</option>`;
     return h;
   }).join('');
 }
 export function parseALevel(v) { const [a, ids] = String(v || '').split('|'); return {a, lv: ids ? ids.split(',').filter(Boolean) : []}; }
+/* casillas para elegir recuadros completos o niveles sueltos (diálogo "Plano A") */
+export function levelChecksHtml(arq, sel) {
+  const L = lvlsOf(arq), S2 = new Set();
+  for (const e of sel || []) { const [id, sub] = String(e).split('@'); if (!sub) { S2.add(id); const l = L.find(x => x.id === id); if (l) regionLevels(l).forEach(x => S2.add(id + '@' + x)); } else sub.split(',').forEach(x => S2.add(id + '@' + x)); }
+  return L.map(l => {
+    const all = regionLevels(l);
+    const head = `<label><input type="checkbox" data-region="${l.id}" value="${l.id}"${S2.has(l.id) ? ' checked' : ''}> <b>${esc(l.name)}</b>${all.length > 1 ? ` <span class="muted">(planta típica)</span>` : ''}</label>`;
+    if (all.length < 2) return head;
+    return head + `<div class="lvsubs">${all.map(x => `<label><input type="checkbox" data-of="${l.id}" value="${l.id}@${x}"${S2.has(l.id + '@' + x) ? ' checked' : ''}> Nivel ${esc(x)}</label>`).join('')}</div>`;
+  }).join('');
+}
+export function wireLevelChecks(root) {
+  root.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.region) root.querySelectorAll(`[data-of="${t.dataset.region}"]`).forEach(c => c.checked = t.checked);
+    else if (t.dataset.of) { const subs = [...root.querySelectorAll(`[data-of="${t.dataset.of}"]`)], head = root.querySelector(`[data-region="${t.dataset.of}"]`); if (head) head.checked = subs.every(c => c.checked); }
+  });
+}
+export function readLevelChecks(root) {
+  const out = [];
+  for (const head of root.querySelectorAll('[data-region]')) {
+    if (head.checked) { out.push(head.value); continue; }
+    for (const c of root.querySelectorAll(`[data-of="${head.dataset.region}"]:checked`)) out.push(c.value);
+  }
+  return out;
+}
+
+/* --- visor de niveles en la hoja de arquitectónicos --- */
+export let viewLevel = null;
+export function setViewLevel(v) { viewLevel = v || null; }
+export function viewLevelObj() { const sh = curSheet(); return sh && sh.kind === 'arq' && viewLevel ? resolveEntry(sh, viewLevel) : null; }
+export function levelViewOptions() {
+  const sh = curSheet(); if (!sh || sh.kind !== 'arq') return '';
+  const L = lvlsOf(sh); if (!L.length) return '';
+  let h = `<option value="">Hoja completa</option>`;
+  for (const l of L) {
+    const all = regionLevels(l);
+    if (all.length > 1) h += `<optgroup label="${esc(l.name)}"><option value="${l.id}">Todos (${esc(joinY(all))})</option>${all.map(x => `<option value="${l.id}@${x}">Nivel ${esc(x)}</option>`).join('')}</optgroup>`;
+    else h += `<option value="${l.id}">${esc(l.name)}</option>`;
+  }
+  return h;
+}
 
 function floorFromLevel(st, l) {
   const A = st.plans.A, B = st.plans.B;
@@ -144,7 +232,12 @@ export function syncLevelFloors(sh) {
   if (!arq || sh.kind !== 'pair') return false;
   const lv = aLevelObjs(sh);
   if ((sh.aLevels || []).length !== lv.length) sh.aLevels = lv.map(l => l.id);
+  const ne = normEntries(arq, sh.aLevels); if (ne.join('|') !== (sh.aLevels || []).join('|')) { sh.aLevels = ne; return syncLevelFloors(sh); }
   let ch = false;
+  if (lv.length >= 2 && !st.plans.B.fileId) {
+    // sin plano B no hay plantas: se crean al cargar el plano B
+    st.aClip = null; const n = st.floors.length; st.floors = st.floors.filter(f => !f.src); return st.floors.length !== n;
+  }
   if (lv.length >= 2) {
     st.aClip = null;
     for (const l of lv) {
@@ -162,7 +255,9 @@ export function syncLevelFloors(sh) {
 }
 /* recortes del plano A en el plano abierto: un nivel, o las plantas que vienen del arquitectónico */
 export function aClips() {
-  const sh = curSheet(); if (!sh || sh.kind !== 'pair') return null;
+  const sh = curSheet(); if (!sh) return null;
+  if (sh.kind === 'arq') { const v = viewLevelObj(); return v ? [v.a] : null; }
+  if (sh.kind !== 'pair') return null;
   if (S.aClip) return [S.aClip];
   const fs = S.floors.filter(f => f.src);
   return fs.length ? fs.map(f => f.a) : null;

@@ -70,7 +70,7 @@ export function init() {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT' || b.tagName === 'SELECT') return;
     const a = b.dataset.act, k = b.dataset.k, p = k ? S.plans[k] : S.plans.B;
     if (a === 'goProj') { showHome(); return; }
-    if (a.startsWith('lv')) { levelsClick(a, b.closest('[data-lvl]')); return; }
+    if (a.startsWith('lv')) { levelsClick(a, b.closest('[data-lvl]'), b); return; }
     if (a === 'chooseA') { chooseA(); return; }
     if (a === 'upload') { loadVars.uploadTarget = k; $('#fileOne').click(); }
     else if (a === 'remove') removePlan(k);

@@ -6,6 +6,7 @@ import { save } from '../core/storage.js';
 import { closePanel } from '../ui/app.js';
 import { closeSheet } from './sheets.js';
 import { renderProject } from '../home/home.js';
+import { aLevelObjs, levelViewOptions, viewLevel } from '../plans/arqlevels.js';
 import { compactSealNumbers } from '../panels/sellos.js';
 
 /* ---------- arranque ---------- */
@@ -51,6 +52,11 @@ export function renderSheetSel() {
   h += '<optgroup label="──────────"><option value="__new">＋ Nuevo plano de instalaciones…</option><option value="__arq">＋ Agregar arquitectónicos…</option><option value="__home">⌂ Inicio del proyecto</option></optgroup>';
   if (el._h !== h) { el.innerHTML = h; el._h = h; }
   el.value = P.active || '';
+  const lv = $('#lvlSel'); if (!lv) return;
+  const lh = levelViewOptions();
+  if (lv._h !== lh) { lv.innerHTML = lh; lv._h = lh; }
+  lv.hidden = !lh;
+  if (lh) { lv.value = viewLevel || ''; if (lv.value !== (viewLevel || '')) lv.value = ''; lv.classList.toggle('on', !!viewLevel); }
 }
 
 export function newProjectData() {
@@ -118,7 +124,7 @@ export function hydrate(o) {
 export function aLevelsLabel(sh) {
   const arq = P.sheets[sh.aSheet], ids = sh.aLevels || [];
   if (!arq || !ids.length) return '';
-  const names = ids.map(id => (arq.state.lvls || []).find(l => l.id === id)?.name).filter(Boolean);
+  const names = aLevelObjs(sh).map(l => l.name);
   return names.length ? ' › ' + names.join(', ') : '';
 }
 
