@@ -1,5 +1,5 @@
 /* Lectura vectorial del PDF (trazos, rellenos, rótulos de diámetro) y resaltado. */
-import { isMobile, PDF_UNIT, pdfjsLib } from '../core/constants.js';
+import { isMobile, LITE, PDF_UNIT, pdfjsLib } from '../core/constants.js';
 import { RT, S } from '../core/state.js';
 import { blitPart, ctx, dirty, setWorld } from '../canvas/render.js';
 import { planFrames, solo } from '../plans/floors.js';
@@ -496,7 +496,7 @@ export function overlayFor(k) {
   const sig = rules.map(([r, f]) => [r.id, r.key, r.noDots, f ? FIRE_HL : r.hl].join(':')).join('|') + '|' + p.w + 'x' + p.h + '|' + editsSig(fireEdits(k)) + '|' + (S.auto.lintels !== false);
   const o = rt.hl;
   if (o && o.sig === sig && o.vec === rt.vec) return o;
-  const oc = overlayCanvas(k, rules, isMobile ? 3000 : 4096);
+  const oc = overlayCanvas(k, rules, isMobile || LITE ? 3000 : 4096);
   return (rt.hl = {sig, vec:rt.vec, c:oc.c, sc:oc.sc, ko:oc.ko});
 }
 

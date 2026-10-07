@@ -74,6 +74,8 @@ export function renderSeals() {
     <div class="typesum">${seals.length ? typeChips(seals, sealWeight) : '<span class="muted">Aún no hay sellos.</span>'}</div></div>`;
   if (hasF && !filt && all.length) h += `<div class="floorsum">${groups.map(([id, name, l]) => { const fl = floorById(id), mu = floorMult(fl);
     return `<button class="fsum" data-act="sfilterSet" data-v="${id}"><span class="fname">${esc(name)}</span><b>${mu > 1 ? `${l.length} × ${mu} = ${l.length*mu}` : l.length}</b>${fl ? `<span class="lv">${mu === 1 ? 'Nivel' : 'Niveles'} ${esc(joinY(floorLevels(fl)))}</span>` : ''}<span class="typesum">${typeChips(l)}</span></button>`; }).join('')}</div>`;
+  const pendD = S.marks.filter(m => m.type === 'seal' && m.st === 'pend' && m.diam).length;
+  if (pendD) h += `<p class="help" style="margin:8px 0 0">${pendD} ${pendD === 1 ? 'sello está' : 'sellos están'} en "Por definir" aunque ${pendD === 1 ? 'tiene' : 'tienen'} diámetro (por ejemplo porque se borró su categoría). <button class="linkbtn" data-act="pendDiam">Asignar categoría por diámetro</button></p>`;
   h += `<div class="btnrow"><button class="btn red" data-act="detect">Detectar cruces</button><button class="btn" data-act="renum">Renumerar</button><button class="btn" data-act="csv">Exportar CSV</button><button class="btn primary" data-act="fss">Excel para Firestop Suite</button></div>
     <p class="help">Detectar cruces busca dónde un trazo de una capa de Instalaciones cruza una línea de una capa de Pared cortafuego, y pone ahí un sello del tipo configurado en esa capa.</p>
     <div class="field" style="grid-template-columns:150px 1fr auto;margin-top:12px"><label>Opacidad de los sellos</label><input type="range" min="0.2" max="1" step="0.05" value="${S.sealAlpha ?? 0.7}" data-act="sealAlpha" aria-label="Opacidad de los sellos"><output>${Math.round((S.sealAlpha ?? 0.7)*100)} %</output></div>
@@ -205,6 +207,11 @@ export function init() {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT' || b.tagName === 'SELECT') return;
     const a = b.dataset.act;
     if (a === 'sfilterSet') { S.sealFilter = b.dataset.v; save(); renderSeals(); return; }
+    if (a === 'pendDiam') {
+      pushUndo(); let n = 0;
+      for (const m of S.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { m.st = catForName(m.diam); n++; }
+      changed(); renderSeals(); toast(`${n} ${n === 1 ? 'sello asignado' : 'sellos asignados'} a la categoría de su diámetro.`); return;
+    }
     if (a === 'detect') detectCrossings();
     else if (a === 'renum') renumber();
     else if (a === 'csv') exportCSV();

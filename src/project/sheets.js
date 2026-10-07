@@ -10,7 +10,7 @@ import { ask, closePanel, renderAll, renderTop, toast } from '../ui/app.js';
 import { floorsVars } from '../plans/floors.js';
 import { needVecInBackground, pathCache } from '../detect/vector.js';
 import { arqState, blankState, curSheet, hideHome, homeOn, isPdfFile, isPlanFile, normState, pid, RT_BLANK, secLabel, sheetsOf, showHome, stripExt, subById } from './model.js';
-import { gcFiles, loadPlanFile, storeFile } from './files.js';
+import { gcFiles, loadPlanFile, storeFile, trimInactive } from './files.js';
 import { commitShared, injectShared } from './shared.js';
 import { renderProject } from '../home/home.js';
 import { aPickerHtml, arqLevelOptions, normEntries, parseALevel, readAPicker, setViewLevel, syncLevelFloors, wireAPicker } from '../plans/arqlevels.js';
@@ -43,7 +43,7 @@ export async function openSheet(id, opt = {}) {
   if (sh.initB) { delete sh.initB; save(); }
   if (P.active !== id) return;
   if (syncLevelFloors(sh) && S.floors.some(f => f.src)) toast('Se crearon las plantas de los niveles elegidos. Revise en Planos que cada una calce con el plano B.');
-  renderAll(); fit(); save(); needVecInBackground();
+  renderAll(); fit(); save(); needVecInBackground(); trimInactive();
   if (S.floors.some(f => f.pending)) { await alignPending(); if (P.active === id) { renderAll(); fit(); save(); } }
 }
 

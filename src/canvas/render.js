@@ -243,7 +243,7 @@ export function drawSeal(m, p, isSel) {
   const x = 0, y = 0, t = ST[m.st], r = 13;
   if (isSel) { ctx.beginPath(); ctx.arc(x, y, r+6, 0, 7); ctx.fillStyle = 'rgba(242,183,5,.6)'; ctx.fill(); }
   if (m.review) { ctx.setLineDash([4, 3]); ctx.strokeStyle = '#FF7A00'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r+5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
-  if (m.st === 'pend') { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r+3.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  if (m.st === 'pend' && !m.diam) { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r+3.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   ctx.beginPath(); if (locOf(m) === 'losa') { const q = r*0.9; ctx.roundRect ? ctx.roundRect(x-q, y-q, q*2, q*2, q*0.25) : ctx.rect(x-q, y-q, q*2, q*2); } else ctx.arc(x, y, r, 0, Math.PI*2); const sa = Math.max(0.15, Math.min(1, S.sealAlpha ?? 0.7));
   ctx.save(); ctx.globalAlpha = sa; ctx.fillStyle = t.color; ctx.fill();
   ctx.globalAlpha = Math.min(1, sa + 0.25); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore();

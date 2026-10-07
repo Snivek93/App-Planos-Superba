@@ -1,6 +1,6 @@
 /* Archivos de planos guardados una sola vez y caché de planos en memoria. */
 import { P, RT, S } from '../core/state.js';
-import { isMobile } from '../core/constants.js';
+import { isMobile, LITE } from '../core/constants.js';
 import { dirty } from '../canvas/render.js';
 import { loadFile, makeTint } from '../plans/load.js';
 import { renderPlans } from '../panels/planos.js';
@@ -42,14 +42,21 @@ export function rtRemember(rt, fileId, page) {
   rt.fileId = fileId; rt.pg = page;
   const key = rtKey(fileId, page); rtCache.delete(key); rtCache.set(key, rt);
   // planos en memoria: pocos, porque cada uno ocupa decenas de MB; los demás se abren rápido desde la caché del navegador
-  const max = isMobile ? 3 : 6;
+  const max = isMobile ? 3 : LITE ? 2 : 4;
+  const active = new Set(Object.values(RT));
   for (const [k, v] of [...rtCache.entries()]) {
     if (rtCache.size <= max) break;
-    if (v === RT.A || v === RT.B) continue;
+    if (active.has(v)) continue;
     rtCache.delete(k);
     if (v.bmp && v.bmp.close) v.bmp.close();
-    v.bmp = v.tinted = v.hl = null;
+    v.bmp = v.tinted = v.hl = v.vec = v.pdf = v.text = null;
   }
+}
+/* Planos guardados en memoria pero que no están abiertos: se sueltan las capas pesadas (resaltado,
+   lectura vectorial, documento PDF). Se recalculan rápido desde la caché del navegador si se vuelven a abrir. */
+export function trimInactive() {
+  const active = new Set(Object.values(RT));
+  for (const v of rtCache.values()) if (!active.has(v)) { v.hl = null; v.tinted = null; v.tintKey = undefined; if (LITE) { v.vec = null; v.pdf = null; v.text = null; v.labels = null; } }
 }
 
 export async function loadPlanFile(k, fileId, page, opt = {}) {

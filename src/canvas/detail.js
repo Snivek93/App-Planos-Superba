@@ -2,7 +2,7 @@
    Cuando la vista se detiene más cerca de lo que da esa imagen, se vuelve a dibujar desde el PDF original
    solo la zona visible, a la resolución de la pantalla, y se pinta encima. Al moverse se sigue viendo la
    imagen base (y el último detalle); al detenerse se actualiza. Solo para planos PDF. */
-import { isMobile, PDF_UNIT } from '../core/constants.js';
+import { isMobile, LITE, PDF_UNIT } from '../core/constants.js';
 import { RT, S, view } from '../core/state.js';
 import { toLocal } from '../core/geometry.js';
 import { CH, CW, ctx, dirty, dpr, EXPORT, interacting } from './render.js';
@@ -13,7 +13,7 @@ import { lookOf, planKeys } from '../plans/extraA.js';
 const det = {};                        // detalle listo por plano (A, B y los A adicionales)
 const task = {};                       // dibujo en curso (se cancela si la vista cambia)
 let timer = null, seq = 0;
-const CAP = isMobile ? 6e6 : 12e6;     // píxeles máximos del detalle (memoria)
+const CAP = () => isMobile || LITE ? 6e6 : 12e6;     // píxeles máximos del detalle (memoria)
 
 const native = (rt, p) => rt.bmp ? rt.bmp.width/p.w : 0;
 
@@ -56,7 +56,7 @@ function check() {
     const w = n.rect[2] - n.rect[0], h = n.rect[3] - n.rect[1];
     let s = n.scale, pad = 0.35;
     let r = [n.rect[0] - w*pad, n.rect[1] - h*pad, n.rect[2] + w*pad, n.rect[3] + h*pad];
-    if ((r[2]-r[0])*(r[3]-r[1])*s*s > CAP) { r = n.rect.slice(); if (w*h*s*s > CAP) s = Math.sqrt(CAP/(w*h)); }
+    if ((r[2]-r[0])*(r[3]-r[1])*s*s > CAP()) { r = n.rect.slice(); if (w*h*s*s > CAP()) s = Math.sqrt(CAP()/(w*h)); }
     r = [Math.max(0, r[0]), Math.max(0, r[1]), Math.min(p.w, r[2]), Math.min(p.h, r[3])];
     render(k, rt, p, r, s);
   }

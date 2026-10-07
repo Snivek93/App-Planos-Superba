@@ -1,5 +1,5 @@
 /* Interfaz general: refresco, pestañas, menú Archivo, avisos y diálogos. */
-import { $, esc } from '../core/constants.js';
+import { $, esc, LITE, setLite } from '../core/constants.js';
 import { ICON } from './icons.js';
 import { redoStack, S, undoStack } from '../core/state.js';
 import { dirty } from '../canvas/render.js';
@@ -36,6 +36,15 @@ export function setTab(t) {
 }
 
 export function renderAll() { renderTools(); renderPlans(); renderLayers(); renderSeals(); renderAuto(); renderOpts(); renderTop(); renderEmpty(); if (homeOn) renderProject(); setTab(curTab || S.tab || 'planos'); }
+
+async function toggleLite() {
+  const ok = await ask({title:'Ahorro de memoria', body: LITE
+    ? 'Se desactiva: los planos se dibujan más grandes (más nítidos al alejar) y se guardan más en memoria. Conviene en computadoras con 16 GB o más. La app se recarga; no se pierde nada.'
+    : 'Para computadoras con poca memoria (8 GB o menos): los planos se guardan en memoria en tamaño más liviano y se sueltan los que no están abiertos. Al acercar se siguen viendo nítidos. La app se recarga; no se pierde nada.',
+    buttons:[{label:'Cancelar', value:false}, {label: LITE ? 'Desactivar' : 'Activar', value:true, primary:true}]});
+  if (!ok) return;
+  setLite(!LITE); save(); setTimeout(() => location.reload(), 150);
+}
 
 export function openPanel() { $('#panel').classList.add('open'); $('#backdrop').classList.add('open'); }
 
@@ -74,10 +83,10 @@ export function init() {
   $('#btnPanel').onclick = () => $('#panel').classList.contains('open') ? closePanel() : openPanel();
   $('#backdrop').onclick = closePanel;
   $('#countTag').onclick = () => { setTab('sellos'); openPanel(); };
-  $('#btnMenu').onclick = e => { e.stopPropagation(); const m = $('#menu'); m.hidden = !m.hidden; $('#btnMenu').setAttribute('aria-expanded', !m.hidden); };
+  $('#btnMenu').onclick = e => { e.stopPropagation(); const m = $('#menu'); m.hidden = !m.hidden; $('#btnMenu').setAttribute('aria-expanded', !m.hidden); $('#mLite').textContent = `Ahorro de memoria: ${LITE ? 'activado' : 'desactivado'}`; };
   document.addEventListener('click', e => { if (!e.target.closest('#menuWrap')) { $('#menu').hidden = true; $('#btnMenu').setAttribute('aria-expanded', 'false'); } });
   $('#menu').addEventListener('click', e => {
     const b = e.target.closest('[data-m]'); if (!b) return; $('#menu').hidden = true;
-    ({home:() => showHome(), addArq:addArqPick, newPair:() => newPairDialog(), save:saveProject, open:() => $('#fileProject').click(), csv:exportCSV, quant:exportQuant, fss:fsDialog, pdf:pdfDialog, png:exportPNG, new:newProject})[b.dataset.m]();
+    ({home:() => showHome(), addArq:addArqPick, newPair:() => newPairDialog(), save:saveProject, open:() => $('#fileProject').click(), csv:exportCSV, quant:exportQuant, fss:fsDialog, pdf:pdfDialog, png:exportPNG, new:newProject, lite:toggleLite})[b.dataset.m]();
   });
 }

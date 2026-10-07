@@ -1,5 +1,5 @@
 /* Detección automática de cruces entre tuberías y paredes cortafuego. */
-import { isMobile, nextCatColor } from '../core/constants.js';
+import { isMobile, LITE, nextCatColor } from '../core/constants.js';
 import { S, sel, uid, undoStack } from '../core/state.js';
 import { baseW, dist, M, toLocal, toWorld } from '../core/geometry.js';
 import { placeSeal } from '../editor/pointer.js';
@@ -81,7 +81,7 @@ export async function runAuto() {
     const pad = 10, reg = [job.reg[0]-pad, job.reg[1]-pad, job.reg[2]+pad, job.reg[3]+pad];
     const rw = reg[2]-reg[0], rh = reg[3]-reg[1];
     if (rw <= 0 || rh <= 0) continue;
-    const res = Math.min(2, Math.sqrt((isMobile ? 6e6 : 12e6)/(rw*rh)));
+    const res = Math.min(2, Math.sqrt((isMobile || LITE ? 6e6 : 12e6)/(rw*rh)));
     const W = Math.max(1, Math.ceil(rw*res)), H = Math.max(1, Math.ceil(rh*res));
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c.getContext('2d', {willReadFrequently:true}); };
     const gf = mk();

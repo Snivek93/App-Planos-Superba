@@ -5,7 +5,7 @@ import { DEFAULT_SEAL_TYPES } from './constants.js';
 export function newPlan() { return ({name:'', page:1, pages:1, w:0, h:0, visible:true, opacity:1, blend:'normal', tint:'', x:0, y:0, s:1, r:0, locked:false}); }
 
 export function defaultState() {
-  const B = newPlan(); B.opacity = 0.75; B.blend = 'multiply'; B.tint = '#1E6FB8';
+  const B = newPlan(); B.opacity = 0.75; // fondo blanco (normal) y colores originales
   return {
     plans: {A: newPlan(), B},
     layers: [

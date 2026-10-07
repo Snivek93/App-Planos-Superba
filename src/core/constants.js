@@ -21,6 +21,15 @@ export async function pdfReady() {
 export let isMobile;
 
 export let MAXDIM;
+/* Ahorro de memoria (computadoras con poca RAM): planos base más livianos y menos planos guardados en memoria.
+   Se activa en Archivo; si el navegador informa 4 GB o menos, viene activado. */
+export let LITE = false;
+const LITE_KEY = 'cortafuego-lite';
+function liteSetting() {
+  try { const v = localStorage.getItem(LITE_KEY); if (v === '1') return true; if (v === '0') return false; } catch (e) {}
+  return !!(navigator.deviceMemory && navigator.deviceMemory <= 4);
+}
+export function setLite(on) { try { localStorage.setItem(LITE_KEY, on ? '1' : '0'); } catch (e) {} }
 
 export let MAXAREA;
 
@@ -81,7 +90,9 @@ export const LAYER_COLORS = ['#C81E2B','#1E6FB8','#12866B','#D08F00','#8A3FC0','
 /* Se ejecuta una vez al arrancar, en el orden original (ver main.js). */
 export function init() {
   isMobile = matchMedia('(pointer:coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
-  MAXDIM = isMobile ? 4096 : 7000;
-  MAXAREA = isMobile ? 9e6 : 22e6;
+  LITE = liteSetting();
+  // con "ahorro de memoria" la imagen base de cada plano es más chica; al acercar se vuelve a dibujar nítida desde el PDF
+  MAXDIM = isMobile ? 4096 : LITE ? 5000 : 7000;
+  MAXAREA = isMobile ? 9e6 : LITE ? 9e6 : 22e6;
   ST = new Proxy({}, {get: (_, id) => stFind(String(id))});
 }
