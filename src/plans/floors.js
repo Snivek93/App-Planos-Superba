@@ -12,6 +12,8 @@ import { renderPlans } from '../panels/planos.js';
 import { ask, changed, closePanel, toast } from '../ui/app.js';
 import { defaultLevels, floorMult } from '../core/levels.js';
 import { apT, ensureVec, undouble } from '../detect/vector.js';
+import { ensurePdf } from './load.js';
+import { aClips } from './arqlevels.js';
 
 /* ---------- plantas (varias plantas en una misma lámina) ---------- */
 export let solo = null; // 'A' o 'B' mientras se dibuja el recorte de una planta
@@ -34,6 +36,13 @@ export function floorAtWorld(w) {
 
 export function planFrames(k) {
   if (k === 'B' && S.floors.length && solo !== 'B') return S.floors.map(f => [f.t, f.b, f]);
+  if (k === 'A' && solo !== 'A') { const cl = aClips(); if (cl) return cl.map(c => [S.plans.A, c, null]); }
+  if (k === 'B' && S.aClip && solo !== 'B') {
+    // un solo nivel: el plano B se muestra solo en la zona de ese nivel
+    const A = S.plans.A, B = S.plans.B, c = S.aClip;
+    const q = [[c[0], c[1]], [c[2], c[1]], [c[2], c[3]], [c[0], c[3]]].map(v => toLocal(B, toWorld(A, v)));
+    return [[B, [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))], null]];
+  }
   return [[S.plans[k], null, null]];
 }
 
@@ -95,7 +104,7 @@ export async function deleteFloor(id) {
 export async function ensureText(k) {
   const rt = RT[k], p = S.plans[k];
   if (rt.text && rt.text.page === p.page) return rt.text.runs;
-  const pg = await rt.pdf.getPage(p.page);
+  const pg = await (await ensurePdf(rt)).getPage(p.page);
   const VT = pg.getViewport({scale:PDF_UNIT}).transform;
   const tc = await pg.getTextContent();
   const raw = []; let cur = null;
@@ -171,7 +180,7 @@ export function fit1D(pairs, sFixed) {
 
 export async function autoAlignFloor(f, quiet) {
   try {
-    if (!RT.A.pdf || !RT.B.pdf) throw new Error('La alineación por ejes necesita que ambos planos sean PDF.');
+    if (!RT.A.isPdf || !RT.B.isPdf) throw new Error('La alineación por ejes necesita que ambos planos sean PDF.');
     const [ta, tb] = await Promise.all([ensureText('A'), ensureText('B')]);
     let va = null, vb = null;
     try { va = await ensureVec('A'); vb = await ensureVec('B'); } catch (e) {}
@@ -216,15 +225,15 @@ export async function autoAlignFloor(f, quiet) {
 
 export function floorsHtml() {
   if (!RT.A.bmp || !RT.B.bmp) return '';
-  const st = f => f.how === 'ejes' ? `<span class="fstat ok">Alineada por ejes</span>` : f.how === 'manual' ? `<span class="fstat ok">Alineada con 2 puntos</span>` : `<span class="fstat warn">Sin alinear</span>`;
+  const st = f => f.how === 'ejes' ? `<span class="fstat ok">Alineada por ejes</span>` : f.how === 'manual' ? `<span class="fstat ok">Alineada con 2 puntos</span>` : f.how === 'nivel' ? `<span class="fstat ok">Del arquitectónico</span>` : `<span class="fstat warn">Sin alinear</span>`;
   return `<section class="plan"><header><span class="badge" style="background:#7A4CC2">⇄</span><div><h3>Plantas en la lámina</h3><p class="muted">Para láminas con varias plantas</p></div></header>
     <p class="help" style="margin:0 0 10px">Si la lámina trae dos plantas (por ejemplo nivel 21 y 22) y no quedan a la misma distancia en el arquitectónico y en el mecánico, defina cada planta. Cada una se alinea por separado, por sus ejes.</p>
     ${S.floors.length ? `<ul class="floors">${S.floors.map(f => `<li data-floor="${f.id}">
-      <div class="frow"><input data-act="fname" value="${esc(f.name)}" aria-label="Nombre de la planta">${st(f)}</div>
-      <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
+      <div class="frow"><input data-act="fname" value="${esc(f.name)}" aria-label="Nombre de la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}>${st(f)}</div>
+      <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
       <label class="chk small" style="margin:6px 0 0"><input type="checkbox" data-act="fbelow"${(f.below ?? S.below) ? ' checked' : ''}> Tuberías bajo losa (paredes en el nivel inferior)</label>
       ${f.info ? `<div class="small muted">${esc(f.info)}</div>` : ''}
-      <div class="btnrow"><button class="btn" data-act="fAxes">Alinear por ejes</button><button class="btn" data-act="fAlign">2 puntos</button><button class="btn" data-act="fMove">Mover</button><button class="btn" data-act="fView">Ver</button><button class="icon" data-act="fDel" title="Quitar planta">${ICON.trash}</button></div></li>`).join('')}</ul>` : ''}
+      <div class="btnrow"><button class="btn" data-act="fAxes">Alinear por ejes</button><button class="btn" data-act="fAlign">2 puntos</button><button class="btn" data-act="fMove">Mover</button><button class="btn" data-act="fView">Ver</button>${f.src ? '' : `<button class="icon" data-act="fDel" title="Quitar planta">${ICON.trash}</button>`}</div></li>`).join('')}</ul>` : ''}
     <button class="btn primary" data-act="addFloor">Agregar planta</button></section>`;
 }
 

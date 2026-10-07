@@ -1,11 +1,13 @@
 /* Lienzo principal: tamaño, dibujo de planos, marcas y sellos, y copias reducidas para dibujar rápido. */
 import { $, ST, txtOn } from '../core/constants.js';
-import { align, cur, gesture, hover, L, RT, S, sel, view } from '../core/state.js';
-import { M, rectPts, toWorld, w2s } from '../core/geometry.js';
+import { align, cur, gesture, hover, L, RT, S, sel, tool, view } from '../core/state.js';
+import { dist, M, rectPts, toWorld, w2s } from '../core/geometry.js';
 import { drawTable } from './tables.js';
 import { locOf } from '../core/levels.js';
 import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
 import { drawAutoHighlights } from '../detect/vector.js';
+import { wallFixMasks } from '../detect/wallfix.js';
+import { drawLevelRects } from '../plans/arqlevels.js';
 
 /* ---------- lienzo ---------- */
 export let stage;
@@ -62,6 +64,7 @@ export function draw() {
     ctx.setLineDash([]); ctx.globalAlpha = 1;
     for (const q of cur.pts) { const s = w2s(...toWorld(p, q)); ctx.fillStyle = '#fff'; ctx.strokeStyle = l.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(s[0], s[1], 4, 0, 7); ctx.fill(); ctx.stroke(); }
   }
+  if (!solo && S.lvls && S.lvls.length) drawLevelRects(ctx, w2s);
   if (!solo) for (const f of S.floors) {
     const r = floorRectWorld(f), a = w2s(r[0], r[1]), b = w2s(r[2], r[3]);
     ctx.strokeStyle = 'rgba(122,76,194,.75)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
@@ -73,6 +76,18 @@ export function draw() {
     ctx.strokeStyle = '#7A4CC2'; ctx.lineWidth = 1.5; ctx.setLineDash([8, 5]);
     ctx.strokeRect(a[0], a[1], b[0]-a[0], b[1]-a[1]); ctx.setLineDash([]);
     ctx.font = '600 12px Barlow, sans-serif'; ctx.fillStyle = '#7A4CC2'; ctx.fillText('Zona de búsqueda', a[0] + 6, a[1] - 6);
+  }
+  if (tool === 'wallfix' && !solo) for (const m of wallFixMasks()) {
+    // zonas borradas: contorno punteado para poder verlas y restaurarlas
+    const A = S.plans.A, q = [[m[0], m[1]], [m[2], m[1]], [m[2], m[3]], [m[0], m[3]]].map(v => w2s(...toWorld(A, v)));
+    ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]); ctx.beginPath(); q.forEach((v, i) => i ? ctx.lineTo(v[0], v[1]) : ctx.moveTo(v[0], v[1])); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if (gesture && gesture.kind === 'wallfix' && dist(gesture.start, gesture.end) >= 8) {
+    const [a, b] = [gesture.start, gesture.end];
+    ctx.fillStyle = 'rgba(200,30,43,.10)'; ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));
+    ctx.strokeRect(Math.min(a[0], b[0]) + .5, Math.min(a[1], b[1]) + .5, Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));
+    ctx.setLineDash([]);
   }
   if (gesture && (gesture.kind === 'marquee' || gesture.kind === 'zone')) {
     const [a, b] = [gesture.start, gesture.end];
@@ -116,7 +131,7 @@ export function drawPlan(k) {
   for (const [fr, clip] of planFrames(k)) {
     ctx.save(); setWorld(fr);
     ctx.globalAlpha = solo ? 1 : p.opacity;
-    ctx.globalCompositeOperation = p.blend === 'multiply' ? 'multiply' : 'source-over';
+    ctx.globalCompositeOperation = p.blend === 'multiply' || src === rt.tinted ? 'multiply' : 'source-over';
     blitPart(src, p, fr, clip);
     ctx.restore();
   }
@@ -130,17 +145,26 @@ export let lastWheel = 0;
 
 export function interacting() { return !!gesture || performance.now() - lastWheel < 220; }
 
+/* Copias reducidas del plano para dibujar rápido con la vista alejada. Se generan en segundo plano
+   (fuera del hilo principal cuando el navegador lo permite); mientras tanto se usa la imagen completa. */
 export function mipLevel(src, level) {
   let arr = mipCache.get(src);
-  if (!arr) { arr = [src]; mipCache.set(src, arr); }
-  while (arr.length <= level) {
-    const prev = arr[arr.length - 1];
-    if (prev.width < 512 || prev.height < 512) break;
-    const c = document.createElement('canvas'); c.width = Math.ceil(prev.width/2); c.height = Math.ceil(prev.height/2);
-    const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, c.width, c.height);
-    arr.push(c);
-  }
+  if (!arr) { arr = [src]; mipCache.set(src, arr); buildMips(src, arr); }
   return arr[Math.min(level, arr.length - 1)];
+}
+async function buildMips(src, arr) {
+  let prev = src;
+  try {
+    while (prev.width >= 1024 && prev.height >= 512 && arr.length < 6) {
+      const w = Math.ceil(prev.width/2), h = Math.ceil(prev.height/2);
+      let next;
+      try { next = await createImageBitmap(prev, {resizeWidth:w, resizeHeight:h, resizeQuality:'high'}); }
+      catch (e) { next = document.createElement('canvas'); next.width = w; next.height = h; const g = next.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, w, h); }
+      arr.push(next); prev = next;
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } catch (e) { console.warn(e); }
+  dirty();
 }
 
 export function blitPart(src, p, fr, clip) {

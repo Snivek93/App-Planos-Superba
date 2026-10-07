@@ -6,7 +6,8 @@ import { placeSeal } from '../editor/pointer.js';
 import { pushUndo } from '../core/undo.js';
 import { changed, renderTop, toast } from '../ui/app.js';
 import { floorRectWorld, frameOf } from '../plans/floors.js';
-import { ensureLabels, ensureVec, ruleCache } from './vector.js';
+import { ensureLabels, ensureVec, fireEdits, paintEvents, ruleCache, visibleEvents } from './vector.js';
+import { RT } from '../core/state.js';
 import { renderAuto } from '../panels/deteccion.js';
 
 /* cruces automáticos */
@@ -27,15 +28,14 @@ export function ruleWorldBB(r) {
   return [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))];
 }
 
-export function paintRule(g, r, res, ox, oy, minPx, fr, clip) {
-  const c = ruleCache(r), p = fr || S.plans[r.plan], m = M(p);
+/* Pinta en g (región reg con resolución res) lo visible de las reglas elegidas, en el marco del plano o la planta. */
+export function paintRules(g, rules, colorOf, res, ox, oy, minPx, fr, clip) {
+  const k = rules[0].plan, rt = RT[k], p = fr || S.plans[k], m = M(p);
+  const fx = fireEdits(k);
   g.save();
   g.setTransform(res, 0, 0, res, -ox*res, -oy*res); g.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
   if (clip) { g.beginPath(); g.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); g.clip(); }
-  g.lineJoin = 'round'; g.lineCap = 'round';
-  g.lineWidth = Math.max(c.w, minPx/(res*p.s));
-  if (c.k === 'f') g.fill(c.path);
-  g.stroke(c.path);
+  paintEvents(g, visibleEvents(rt.vec, rules, fx), colorOf, minPx/(res*p.s), fx);
   g.restore();
 }
 
@@ -61,6 +61,7 @@ export async function runAuto() {
     let reg = [Math.min(...bbs.map(b => b[0])), Math.min(...bbs.map(b => b[1])), Math.max(...bbs.map(b => b[2])), Math.max(...bbs.map(b => b[3]))];
     reg = [Math.max(reg[0], Math.min(...pbs.map(b => b[0]))), Math.max(reg[1], Math.min(...pbs.map(b => b[1]))), Math.min(reg[2], Math.max(...pbs.map(b => b[2]))), Math.min(reg[3], Math.max(...pbs.map(b => b[3])))];
     if (S.auto.zone) { const z = S.auto.zone; reg = [Math.max(reg[0], z[0]), Math.max(reg[1], z[1]), Math.min(reg[2], z[2]), Math.min(reg[3], z[3])]; }
+    if (S.aClip) { const c = S.aClip, A = S.plans.A, q = [[c[0], c[1]], [c[2], c[3]]].map(v => toWorld(A, v)); reg = [Math.max(reg[0], Math.min(q[0][0], q[1][0])), Math.max(reg[1], Math.min(q[0][1], q[1][1])), Math.min(reg[2], Math.max(q[0][0], q[1][0])), Math.min(reg[3], Math.max(q[0][1], q[1][1]))]; }
     jobs.push({floor:null, reg, frames:{A:[S.plans.A, null], B:[S.plans.B, null]}});
   }
   const labelsBy = {};
@@ -74,14 +75,13 @@ export async function runAuto() {
     const W = Math.max(1, Math.ceil(rw*res)), H = Math.max(1, Math.ceil(rh*res));
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c.getContext('2d', {willReadFrequently:true}); };
     const gf = mk();
-    fr.forEach((r, i) => { const v = (i + 1)*12; gf.fillStyle = gf.strokeStyle = `rgb(${v},0,0)`; const [f0, c0] = job.frames[r.plan]; paintRule(gf, r, res, reg[0], reg[1], 1, f0, c0); });
+    { const [f0, c0] = job.frames.A; paintRules(gf, fr, r => `rgb(${(fr.indexOf(r) + 1)*12},0,0)`, res, reg[0], reg[1], 1, f0, c0); }
     const F = gf.getImageData(0, 0, W, H).data;
     const gp = mk();
     const mark = new Uint8Array(W*H), stack = new Int32Array(W*H);
     pr.forEach(r => {
       gp.setTransform(1, 0, 0, 1, 0, 0); gp.clearRect(0, 0, W, H);
-      gp.fillStyle = gp.strokeStyle = '#000';
-      const [f0, c0] = job.frames[r.plan]; paintRule(gp, r, res, reg[0], reg[1], 1.2, f0, c0);
+      const [f0, c0] = job.frames[r.plan]; paintRules(gp, [r], () => '#000', res, reg[0], reg[1], 1.2, f0, c0);
       const P = gp.getImageData(0, 0, W, H).data;
       mark.fill(0);
       for (let i = 0, n = W*H; i < n; i++) if (P[i*4+3] > 60 && F[i*4+3] > 60) mark[i] = 1;

@@ -11,8 +11,9 @@ import { save } from '../core/storage.js';
 import { changed, closePanel, toast } from '../ui/app.js';
 import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/levels.js';
 import { addFloor, autoAlignFloor, deleteFloor, fitRect, floorById, floorRectWorld, floorsHtml } from '../plans/floors.js';
-import { curSheet, showHome } from '../project/model.js';
+import { aLevelsLabel, curSheet, showHome } from '../project/model.js';
 import { changePage, chooseA } from '../project/sheets.js';
+import { arqLevelsHtml, levelsChange, levelsClick } from '../plans/arqlevels.js';
 
 /* ---------- panel: planos ---------- */
 export function planCard(k) {
@@ -27,7 +28,7 @@ export function planCard(k) {
     if (pairA) return h + `<p class="help" style="margin:0 0 8px">${p.fileId ? 'No se encontró el archivo de ese arquitectónico en este navegador.' : 'Elija la hoja de arquitectónicos.'}</p><button class="btn" data-act="chooseA">Elegir arquitectónico</button></section>`;
     return h + `<button class="drop" data-act="upload" data-k="${k}">Subir PDF o imagen</button>${p.w ? '<p class="help">Aquí había un plano. Súbalo de nuevo para ver las marcas sobre él.</p>' : ''}</section>`;
   }
-  const label = pairA ? (P.sheets[sh.aSheet]?.name || rt.name) : rt.name;
+  const label = pairA ? (P.sheets[sh.aSheet]?.name || rt.name) + aLevelsLabel(sh) : rt.name;
   h += `<div class="fname"><span title="${esc(rt.name)}">${esc(label)}</span>${pairA ? `<button class="linkbtn" data-act="chooseA">Cambiar</button>` :
     `<button class="linkbtn" data-act="upload" data-k="${k}">Cambiar archivo</button>${k === 'B' ? `<button class="linkbtn red" data-act="remove" data-k="${k}">Quitar</button>` : ''}`}</div>`;
   if (p.pages > 1 && !pairA) h += `<div class="field"><label>Página</label><select data-act="page" data-k="${k}">${Array.from({length:p.pages}, (_, i) => `<option value="${i+1}"${p.page === i+1 ? ' selected' : ''}>${i+1} de ${p.pages}</option>`).join('')}</select><span></span></div>`;
@@ -53,7 +54,7 @@ export function planCard(k) {
 export function renderPlans() {
   const sh = curSheet(), el = $('#tab-planos');
   if (!sh) { el.innerHTML = `<p class="help">No hay ningún plano abierto.</p><div class="btnrow"><button class="btn primary" data-act="goProj">Ir al inicio del proyecto</button></div>`; return; }
-  if (sh.kind === 'arq') { el.innerHTML = planCard('A') + `<p class="help"><b>Hoja de arquitectónicos.</b> Marque aquí las paredes cortafuego, a mano o con la detección automática. Todos los planos de instalaciones que usen esta hoja como plano A ven estas paredes, y lo que se marque o corrija en ellos vuelve aquí.</p>`; return; }
+  if (sh.kind === 'arq') { el.innerHTML = planCard('A') + (RT.A.bmp ? arqLevelsHtml() : '') + `<p class="help"><b>Hoja de arquitectónicos.</b> Marque aquí las paredes cortafuego, a mano o con la detección automática. Todos los planos de instalaciones que usen esta hoja como plano A ven estas paredes, y lo que se marque o corrija en ellos vuelve aquí.</p>`; return; }
   el.innerHTML = planCard('A') + planCard('B') + levelsHtml() + floorsHtml() +
     `<p class="help"><b>Cómo se usa.</b> Las paredes cortafuego vienen del arquitectónico. Trace los ductos y tuberías del plano B en la capa Instalaciones o use la detección automática, y ponga los sellos a mano con la herramienta Sello cuando haga falta.</p>`;
 }
@@ -69,6 +70,7 @@ export function init() {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT' || b.tagName === 'SELECT') return;
     const a = b.dataset.act, k = b.dataset.k, p = k ? S.plans[k] : S.plans.B;
     if (a === 'goProj') { showHome(); return; }
+    if (a.startsWith('lv')) { levelsClick(a, b.closest('[data-lvl]')); return; }
     if (a === 'chooseA') { chooseA(); return; }
     if (a === 'upload') { loadVars.uploadTarget = k; $('#fileOne').click(); }
     else if (a === 'remove') removePlan(k);
@@ -104,7 +106,8 @@ export function init() {
     if (a === 'flevels') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { fl.levels = t.value.trim(); save(); renderPlans(); renderSeals(); dirty(); toast(`"${fl.name}" representa ${floorMult(fl) === 1 ? 'el nivel' : 'los niveles'} ${joinY(floorLevels(fl))} (×${floorMult(fl)}).`); } return; }
     if (a === 'pbelow') { S.below = t.checked; S.floors.forEach(f => f.below = t.checked); save(); renderPlans(); renderSeals(); return; }
     if (a === 'fbelow') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { fl.below = t.checked; save(); renderSeals(); } return; }
-    if (a === 'plevels') { S.levels = t.value.trim(); save(); renderSeals(); const lv = parseLevels(S.levels); if (lv.length) toast(`Este plano: ${lv.length === 1 ? 'nivel' : 'niveles'} ${joinY(lv)}${lv.length > 1 ? ` (×${lv.length})` : ''}.`); return; }
+    if (a === 'lvName' || a === 'lvLevels') { levelsChange(t, t.closest('[data-lvl]')); return; }
+    if (a === 'plevels') { S.levels = t.value.trim(); S.levelsAuto = false; save(); renderSeals(); const lv = parseLevels(S.levels); if (lv.length) toast(`Este plano: ${lv.length === 1 ? 'nivel' : 'niveles'} ${joinY(lv)}${lv.length > 1 ? ` (×${lv.length})` : ''}.`); return; }
     if (a === 'visible') { S.plans[k].visible = t.checked; save(); dirty(); }
     else if (a === 'page') { changePage(k, +t.value); }
     else if (a === 'rot') { sliding = false; changed(); }

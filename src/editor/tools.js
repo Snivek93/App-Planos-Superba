@@ -106,6 +106,10 @@ export function renderOpts() {
     h = `<span class="hint">Toque ${fire ? 'una pared cortafuego en el plano A' : 'una tubería en el plano B'}. Acerque el zoom para tocar justo encima.</span><button class="btn primary" data-o="pickDone">Terminar</button>`;
   } else if (tool === 'floorA' || tool === 'floorB') {
     h = `<b>Paso ${tool === 'floorA' ? 1 : 2} de 2</b><span class="hint">Arrastre un rectángulo alrededor de "${esc(floorDraft ? floorDraft.name : '')}" en el plano ${tool === 'floorA' ? 'A (arquitectónico)' : 'B (instalaciones)'}. Incluya los círculos de los ejes.</span><button class="btn" data-o="floorCancel">Cancelar</button>`;
+  } else if (tool === 'lvlRect') {
+    h = `<span class="hint">Arrastre un rectángulo alrededor de la planta de ese nivel, incluyendo su título (por ejemplo "PLANTA NIVEL 6").</span><button class="btn" data-o="cancelTool">Cancelar</button>`;
+  } else if (tool === 'wallfix') {
+    h = `<b>Afinar paredes</b><span class="hint">Toque una columna, símbolo o trozo para quitarlo de las paredes (o devolverlo). Arrastre un rectángulo para borrar una zona; toque dentro de una zona borrada para restaurarla.</span><button class="btn primary" data-o="cancelTool">Terminar</button>`;
   } else if (tool === 'zone') {
     h = `<span class="hint">Arrastre un rectángulo alrededor del nivel que quiere revisar.</span><button class="btn" data-o="cancelTool">Cancelar</button>`;
   } else if (tool === 'table') {

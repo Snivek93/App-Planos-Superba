@@ -36,6 +36,8 @@ import { registerPWA, handleLaunchFiles } from './pwa.js';
 import { S, P, RT, view } from './core/state.js';
 import { openSheet } from './project/sheets.js';
 import { curSheet } from './project/model.js';
+import * as vector from './detect/vector.js';
+import { renderAll } from './ui/app.js';
 
 initCoreConstants();
 initUiIcons();
@@ -66,4 +68,4 @@ registerPWA();
 handleLaunchFiles();
 
 // Solo en desarrollo (o con DEBUG_HOOK=1 al compilar): acceso al estado desde la consola.
-if (__DEBUG__) window.__dbg = () => ({S, P, RT, view, openSheet, curSheet});
+if (__DEBUG__) window.__dbg = () => ({S, P, RT, view, openSheet, curSheet, vector, renderAll});

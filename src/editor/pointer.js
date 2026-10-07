@@ -15,6 +15,8 @@ import { ask, changed, toast } from '../ui/app.js';
 import { floorAtWorld, floorRect, frameAt, frameOf } from '../plans/floors.js';
 import { pickAt } from '../detect/pick.js';
 import { renderAuto } from '../panels/deteccion.js';
+import { wallFixRect, wallFixTap } from '../detect/wallfix.js';
+import { finishLevelRect } from '../plans/arqlevels.js';
 
 /* ---------- eventos del puntero ---------- */
 export let ptrs;
@@ -65,8 +67,10 @@ export function down(p, e) {
       stateVars.gesture = {kind:'tap', start:p, v0:{...view}}; break;
     case 'eraser':
       stateVars.gesture = {kind:'erase', pushed:false}; eraseAt(p, gesture); break;
-    case 'zone': case 'floorA': case 'floorB':
+    case 'zone': case 'floorA': case 'floorB': case 'lvlRect':
       stateVars.gesture = {kind:'zone', start:p, end:p}; break;
+    case 'wallfix':
+      stateVars.gesture = {kind:'wallfix', start:p, end:p}; break;
     case 'moveB': {
       const pb = S.plans.B;
       if (!RT.B.bmp) { toast('Primero suba el plano B.'); return; }
@@ -110,7 +114,7 @@ export function move(p, e) {
       }
       dirty(); break;
     }
-    case 'marquee': case 'zone': g.end = p; dirty(); break;
+    case 'marquee': case 'zone': case 'wallfix': g.end = p; dirty(); break;
     case 'erase': eraseAt(p, g); break;
     case 'moveB': {
       const w = s2w(...p), t = g.tgt;
@@ -153,9 +157,15 @@ export function up(p, e) {
     case 'move': if (g.moved) changed(); break;
     case 'erase': if (g.pushed) changed(); break;
     case 'moveB': if (g.fl) { g.fl.how = 'manual'; g.fl.info = 'Ajustada a mano'; } changed(); renderPlans(); break;
+    case 'wallfix': {
+      if (dist(g.start, g.end) < 8) wallFixTap(s2w(...g.end), 9/view.z);
+      else wallFixRect(s2w(...g.start), s2w(...g.end));
+      dirty(); break;
+    }
     case 'zone': {
       if (dist(g.start, g.end) < 10) { dirty(); break; }
       const a = s2w(...g.start), b = s2w(...g.end);
+      if (tool === 'lvlRect') { finishLevelRect([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]); break; }
       if (tool === 'floorA' || tool === 'floorB') { floorRect([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]); break; }
       S.auto.zone = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
       save(); setTool('select'); renderAuto(); toast('Zona de búsqueda guardada.'); break;

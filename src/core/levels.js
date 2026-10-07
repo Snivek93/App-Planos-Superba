@@ -82,7 +82,7 @@ export function sealLevels(m) {
 export function levelsHtml() {
   return `<section class="plan"><header><span class="badge" style="background:#12866B">N</span><div><h3>Niveles de este plano</h3><p class="muted">Para tablas y exportación</p></div></header>
     ${S.floors.length ? '<p class="help" style="margin:0 0 8px">Hay plantas definidas: los niveles se indican en cada planta, más abajo.</p>' :
-      `<div class="field" style="grid-template-columns:86px 1fr"><label>Nivel(es)</label><input data-act="plevels" value="${esc(S.levels || '')}" placeholder="Ej.: 5, o 7-10 si es planta típica"></div>`}
+      `<div class="field" style="grid-template-columns:86px 1fr"><label>Nivel(es)</label><input data-act="plevels" value="${esc(S.levels || '')}" placeholder="Ej.: 5, o 7-10 si es planta típica"></div>${S.levelsAuto ? '<p class="help" style="margin:-4px 0 8px">Tomado del nivel elegido en el arquitectónico.</p>' : ''}`}
     <label class="chk"><input type="checkbox" data-act="pbelow"${S.below ? ' checked' : ''}> Tuberías bajo losa: las paredes que cruzan son del nivel inferior (típico en sanitario y pluvial)</label>
     <p class="help" style="margin:4px 0 0">Con esta opción, en las tablas y en la exportación los sellos en pared van al nivel de abajo y los de losa quedan en el nivel del plano.</p></section>`;
 }

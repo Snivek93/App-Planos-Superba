@@ -22,6 +22,14 @@ export const DB = {
     try { const db = await this.open(); await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').clear(); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
     catch (e) { console.warn(e); }
   },
+  async has(k) {
+    try { const db = await this.open(); return await new Promise((res, rej) => { const r = db.transaction('files').objectStore('files').getKey(k); r.onsuccess = () => res(r.result !== undefined); r.onerror = () => rej(r.error); }); }
+    catch (e) { return false; }
+  },
+  async delPrefix(prefix) {
+    try { const db = await this.open(); await new Promise((res, rej) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').delete(IDBKeyRange.bound(prefix, prefix + '\uffff')); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+    catch (e) { console.warn(e); }
+  },
   async get(k) {
     try { const db = await this.open(); return await new Promise((res, rej) => { const r = db.transaction('files').objectStore('files').get(k); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
     catch (e) { return null; }

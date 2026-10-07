@@ -111,6 +111,14 @@ export function hydrate(o) {
   return P;
 }
 
+/* " › Nivel 6, Nivel 7" cuando el plano usa solo algunos niveles del arquitectónico */
+export function aLevelsLabel(sh) {
+  const arq = P.sheets[sh.aSheet], ids = sh.aLevels || [];
+  if (!arq || !ids.length) return '';
+  const names = ids.map(id => (arq.state.lvls || []).find(l => l.id === id)?.name).filter(Boolean);
+  return names.length ? ' › ' + names.join(', ') : '';
+}
+
 export function curSheet() { return P && P.active ? P.sheets[P.active] || null : null; }
 
 export function secById(id) { return P.sections.find(s => s.id === id); }

@@ -8,6 +8,7 @@ import { save } from '../core/storage.js';
 import { closePanel, toast } from '../ui/app.js';
 import { ensureVec, isDot, pathCache, ruleCache } from '../detect/vector.js';
 import { clearAutoSeals, runAuto } from '../detect/cross.js';
+import { startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
 
 /* panel */
 export function ruleHasDots(r) { const v = RT[r.plan].vec; return !!(v && (v.byKey.get(r.key) || []).some(isDot)); }
@@ -19,7 +20,7 @@ export function ruleRow(r, isFire) {
     <span class="cnt" title="Formas encontradas">${n}</span>
     <button class="icon" data-act="ron" aria-pressed="${!r.on}" title="${r.on ? 'Excluir de la búsqueda' : 'Incluir en la búsqueda'}">${r.on ? ICON.eye : ICON.eyeOff}</button>
     <button class="icon" data-act="rdel" title="Quitar">${ICON.trash}</button>
-    ${ruleHasDots(r) ? `<label class="chk small" style="grid-column:2 / -1;margin:0"><input type="checkbox" data-act="rdots"${r.noDots === false ? '' : ' checked'}> Ignorar puntos y círculos pequeños</label>` : ''}</li>`;
+    ${ruleHasDots(r) ? `<label class="chk small" style="grid-column:2 / -1;margin:0"><input type="checkbox" data-act="rdots"${r.noDots === false ? '' : ' checked'}> Ignorar símbolos pequeños (círculos de nivel, flechas, puntos)</label>` : ''}</li>`;
 }
 
 export function renderAuto() {
@@ -29,7 +30,8 @@ export function renderAuto() {
     <p class="help" style="margin-top:4px">Opcional: puede seguir marcando todo a mano. Funciona con PDF exportados desde CAD o Revit, no con escaneos. Usted toca una pared o una tubería y la app toma todas las del mismo estilo.</p>
     <div class="sect"><header><h3>Paredes cortafuego (plano A)</h3></header>
       <ul class="cats rules">${a.fire.map(r => ruleRow(r, true)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
-      <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button></div></div>
+      <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button>${a.fire.length ? '<button class="btn" data-act="wallFix">Afinar paredes a mano</button>' : ''}</div>
+      ${wallFixSummary() ? `<p class="help" style="margin-top:6px">Ajustes a mano: ${esc(wallFixSummary())}. <button class="linkbtn" data-act="wallFixReset">Restaurar todo</button></p>` : ''}</div>
     <div class="sect"><header><h3>Tuberías (plano B)</h3></header>
       <ul class="cats rules">${a.pipes.map(r => ruleRow(r, false)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
       <div class="btnrow"><button class="btn" data-act="pickPipe">Elegir en el plano</button></div>
@@ -59,11 +61,13 @@ export function init() {
     if (a === 'pickFire' || a === 'pickPipe') {
       const k = a === 'pickFire' ? 'A' : 'B';
       if (!RT[k].bmp) return toast(`Primero suba el plano ${k}.`);
-      if (!RT[k].pdf) return toast(`El plano ${k} es una imagen. La detección automática necesita el PDF original.`);
+      if (!RT[k].isPdf) return toast(`El plano ${k} es una imagen. La detección automática necesita el PDF original.`);
       S.auto.picking = a === 'pickFire' ? 'fire' : 'pipe';
       S.plans[k].visible = true; closePanel(); setTool('pick');
       ensureVec(k).catch(err => toast(err.message));
     }
+    else if (a === 'wallFix') { S.plans.A.visible = true; S.auto.show = true; startWallFix().then(ok => { if (ok) { closePanel(); setTool('wallfix'); dirty(); } }); }
+    else if (a === 'wallFixReset') wallFixReset();
     else if (a === 'ron') { rule.on = !rule.on; save(); renderAuto(); dirty(); }
     else if (a === 'rdel') { S.auto.fire = S.auto.fire.filter(r => r !== rule); S.auto.pipes = S.auto.pipes.filter(r => r !== rule); pathCache.delete(rule.id); save(); renderAuto(); dirty(); }
     else if (a === 'zone') { closePanel(); setTool('zone'); }
@@ -74,7 +78,7 @@ export function init() {
   ta.addEventListener('change', e => {
     const t = e.target, a = t.dataset.act;
     if (a === 'rname') { const li = t.closest('[data-rule]'); const r = [...S.auto.fire, ...S.auto.pipes].find(x => x.id === li.dataset.rule); if (r) r.name = t.value.trim() || r.name; save(); }
-    else if (a === 'rdots') { const li = t.closest('[data-rule]'); const r = [...S.auto.fire, ...S.auto.pipes].find(x => x.id === li.dataset.rule); if (r) { r.noDots = t.checked; pathCache.delete(r.id); save(); renderAuto(); dirty(); } }
+    else if (a === 'rdots') { const li = t.closest('[data-rule]'); const r = [...S.auto.fire, ...S.auto.pipes].find(x => x.id === li.dataset.rule); if (r) { r.noDots = t.checked; pathCache.delete(r.id); RT.A.hl = RT.B.hl = null; save(); renderAuto(); dirty(); } }
     else if (a === 'diam') { S.auto.diam = t.checked; save(); }
     else if (a === 'catMode') { S.auto.catMode = t.value; save(); }
     else if (a === 'showDiam') { S.showDiam = t.checked; save(); dirty(); }

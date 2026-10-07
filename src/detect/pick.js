@@ -46,10 +46,10 @@ export async function pickAt(w) {
   hits.sort((a, b) => rank(b) - rank(a));
   const list = target === 'fire' ? S.auto.fire : S.auto.pipes;
   const defName = target === 'fire' ? `Pared cortafuego ${list.length + 1}` : `Tubería ${list.length + 1}`;
-  const grpInfo = s => { const g = vec.byKey.get(s.key), d = g.filter(isDot).length; return d ? `${g.length - d} formas y ${d} ${d === 1 ? 'punto' : 'puntos'}` : `${g.length} en el plano`; };
+  const grpInfo = s => { const g = vec.byKey.get(s.key), d = g.filter(isDot).length; return d ? `${g.length - d} formas y ${d} ${d === 1 ? 'símbolo pequeño' : 'símbolos pequeños'}` : `${g.length} en el plano`; };
   const desc = s => s.k === 'f' ? 'Relleno' : `Línea de ${(s.w/PDF_UNIT*0.3528).toFixed(2).replace('.', ',')} mm`;
   const html = `<div class="checks">${hits.map((s, i) => `<label><input type="radio" name="pk" value="${i}"${i === 0 ? ' checked' : ''}><span class="ldot" style="--c:${s.c};width:18px;height:18px;border-radius:4px;box-shadow:0 0 0 1px rgba(0,0,0,.25)"></span>${desc(s)} <span class="muted">(${grpInfo(s)})</span></label>`).join('')}</div>
-    <label class="chk"><input type="checkbox" id="pkDots"${isDot(hits[0]) ? '' : ' checked'}> Ignorar puntos y círculos pequeños (por ejemplo los de las etiquetas N1, N2…)</label>
+    <label class="chk"><input type="checkbox" id="pkDots"${isDot(hits[0]) ? '' : ' checked'}> Ignorar símbolos pequeños: puntos de etiqueta, círculos de nivel (N.L.T.), flechas y triángulos</label>
     <label class="row"><span>Nombre</span><input type="text" id="pkName" value="${esc(defName)}"></label>`;
   const v = await ask({title: target === 'fire' ? '¿Cuál es la pared cortafuego?' : '¿Cuál es la tubería?', body:'Elija el estilo que corresponde. Se tomarán todas las formas del plano con ese mismo estilo.', html,
     buttons:[{label:'Cancelar', value:null}, {label:'Agregar', value:'ok', primary:true}],

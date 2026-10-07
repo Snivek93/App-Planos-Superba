@@ -173,6 +173,17 @@ export function detectCrossings() {
   changed(); toast(`Se agregaron ${n} ${n === 1 ? 'sello' : 'sellos'} en los cruces.`);
 }
 
+/* Numeración sin huecos: al borrar sellos, los que siguen se corren (por lámina o por planta). */
+export function compactSealNumbers() {
+  const seals = sealsSorted();
+  if (!seals.length) { S.seq = 0; return false; }
+  let moved = false;
+  const fix = list => list.forEach((m, i) => { if (m.n !== i + 1) { m.n = i + 1; moved = true; } });
+  if (S.numPerFloor && S.floors.length) for (const [, , l] of sealGroups(seals)) fix(l); else fix(seals);
+  S.seq = Math.max(...seals.map(m => m.n));
+  return moved;
+}
+
 export async function renumber() {
   const seals = sealsSorted(); if (!seals.length) return;
   let mode = 'all';

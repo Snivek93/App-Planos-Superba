@@ -7,7 +7,8 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, toast } from '../ui/app.js';
 import { floorAtWorld, planFrames } from '../plans/floors.js';
-import { apT, ensureVec, FIRE_HL, isDot, mulT, PIPE_HL, ruleCache } from '../detect/vector.js';
+import { apT, ensureVec, mulT, overlayCanvas } from '../detect/vector.js';
+import { ensurePdf } from '../plans/load.js';
 
 /* ---------- PDF vectorial: las marcas se escriben como líneas y texto del PDF, no como imagen ---------- */
 /* pdf-lib se carga solo al exportar */
@@ -136,13 +137,6 @@ export class PdfCtx {
   strokeText(s, x, y) { this._text(s, x, y, 1); }
 }
 
-export function traceRule(g, r) {
-  const shapes = (RT[r.plan].vec?.byKey.get(r.key) || []).filter(sh => r.noDots === false || !isDot(sh));
-  g.beginPath();
-  for (const sh of shapes) for (const sp of sh.sp) { g.moveTo(sp[0], sp[1]); for (let i = 2; i < sp.length; i += 2) g.lineTo(sp[i], sp[i+1]); if (sh.k === 'f') g.closePath(); }
-  return shapes.length ? shapes[0] : null;
-}
-
 export function invM(q) { const dt = q[0]*q[3] - q[1]*q[2]; return [q[3]/dt, -q[1]/dt, -q[2]/dt, q[0]/dt, (q[2]*q[5] - q[3]*q[4])/dt, (q[1]*q[4] - q[0]*q[5])/dt]; }
 
 export async function exportPDFVector(k, withOther, opt) {
@@ -151,7 +145,7 @@ export async function exportPDFVector(k, withOther, opt) {
   for (const kk of new Set(hlRules.map(([r]) => r.plan))) { try { await ensureVec(kk); } catch (e) {} }
   const doc = await P.PDFDocument.create();
   let page, base, unitPerPt;
-  if (rt.pdf) {
+  if (rt.isPdf && await ensurePdf(rt)) {
     const src = await P.PDFDocument.load(await rt.file.arrayBuffer(), {ignoreEncryption:true});
     const [cp] = await doc.copyPages(src, [p.page - 1]); page = doc.addPage(cp);
     const pj = await rt.pdf.getPage(p.page);
@@ -167,12 +161,18 @@ export async function exportPDFVector(k, withOther, opt) {
   const fonts = {reg: await doc.embedFont(P.StandardFonts.Helvetica), bold: await doc.embedFont(P.StandardFonts.HelveticaBold)};
   fonts.regName = page.node.newFontDictionary('F', fonts.reg.ref); fonts.boldName = page.node.newFontDictionary('F', fonts.bold.ref);
   const g = new PdfCtx(doc, page, fonts);
+  const hlImgs = {};
+  for (const hk of new Set(hlRules.map(([r]) => r.plan))) {
+    const oc = overlayCanvas(hk, hlRules.filter(([r]) => r.plan === hk), 6000); if (!oc) continue;
+    const png = await new Promise(res => oc.c.toBlob(res, 'image/png'));
+    hlImgs[hk] = page.node.newXObject('Resaltado', (await doc.embedPng(await png.arrayBuffer())).ref);
+  }
   g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...base));
   // el otro plano de fondo, también vectorial si es PDF
   const other = k === 'A' ? 'B' : 'A', po = S.plans[other], ro = RT[other];
   let otherDraw = null;
   if (withOther && ro.bmp) {
-    if (ro.pdf) {
+    if (ro.isPdf && await ensurePdf(ro)) {
       const srcO = await P.PDFDocument.load(await ro.file.arrayBuffer(), {ignoreEncryption:true});
       const pjo = await ro.pdf.getPage(po.page), v = pjo.view;
       const emb = await doc.embedPage(srcO.getPage(po.page - 1), {left:v[0], bottom:v[1], right:v[2], top:v[3]});
@@ -207,19 +207,15 @@ export async function exportPDFVector(k, withOther, opt) {
         g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, otherDraw.inner)), P.drawObject(otherDraw.name), P.popGraphicsState());
         ctx.restore();
       }
-      if (!pc.rest || !S.floors.length) for (const [r, isFire] of hlRules) {
-        const frames = r.plan === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[S.plans[r.plan], null]];
+      // paredes y tuberías detectadas: la misma capa de resaltado que se ve en pantalla
+      if (!pc.rest || !S.floors.length) for (const hk of Object.keys(hlImgs)) {
+        const hi = hlImgs[hk], hp = S.plans[hk];
+        const frames = hk === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[hp, null]];
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          ctx.globalAlpha = isFire ? 0.55 : 0.8; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-          ctx.fillStyle = ctx.strokeStyle = isFire ? FIRE_HL : (r.hl || PIPE_HL[0]);
-          const sh = traceRule(ctx, r);
-          if (sh) {
-            ctx.lineWidth = Math.max(sh.w || 0, (isFire ? 0.6 : 1.2)*unitPerPt/(Math.abs(VM[0])*fr.s || 1));
-            if (sh.k === 'f') ctx.fill();
-            ctx.stroke();
-          }
+          g._gs(hk === 'A' ? 0.55 : 0.85);
+          g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hi), P.popGraphicsState());
           ctx.restore();
         }
       }
@@ -274,7 +270,7 @@ export async function exportPDF(k, withOther, opt = {}) {
   for (const kk of new Set(hlRules.map(([r]) => r.plan))) { try { await ensureVec(kk); } catch (e) {} }
   await new Promise(r => setTimeout(r, 60));
   const W = rt.bmp.width, H = rt.bmp.height, sc = W/p.w, m = M(p);
-  const pw = rt.pdf ? p.w/PDF_UNIT : p.w*0.75, ph = rt.pdf ? p.h/PDF_UNIT : p.h*0.75;
+  const pw = rt.isPdf ? p.w/PDF_UNIT : p.w*0.75, ph = rt.isPdf ? p.h/PDF_UNIT : p.h*0.75;
   const pxPerPt = W/pw, sealMM = (opt.size ?? S.pdfSealMM ?? 4);
   const det = m[0]*m[3] - m[1]*m[2];
   const inv = [m[3]/det, -m[1]/det, -m[2]/det, m[0]/det, (m[2]*m[5] - m[3]*m[4])/det, (m[1]*m[4] - m[0]*m[5])/det];
@@ -302,17 +298,14 @@ export async function exportPDF(k, withOther, opt = {}) {
         }
       }
       // paredes y tuberías detectadas automáticamente
-      if (!pc.rest || !S.floors.length) for (const [r, isFire] of hlRules) {
-        const rc = ruleCache(r); if (!rc) continue;
-        const frames = r.plan === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[S.plans[r.plan], null]];
+      if (!pc.rest || !S.floors.length) for (const hk of new Set(hlRules.map(([r]) => r.plan))) {
+        const oc = overlayCanvas(hk, hlRules.filter(([r]) => r.plan === hk), 6000); if (!oc) continue;
+        const hp = S.plans[hk];
+        const frames = hk === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[hp, null]];
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          ctx.globalAlpha = isFire ? 0.55 : 0.8; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-          ctx.fillStyle = ctx.strokeStyle = isFire ? FIRE_HL : (r.hl || PIPE_HL[0]);
-          ctx.lineWidth = Math.max(rc.w, (isFire ? 0.6 : 1.2)*pxPerPt/(Math.abs(VM[0])*fr.s || 1));
-          if (rc.k === 'f') ctx.fill(rc.path);
-          ctx.stroke(rc.path);
+          ctx.globalAlpha = hk === 'A' ? 0.55 : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
           ctx.restore();
         }
       }

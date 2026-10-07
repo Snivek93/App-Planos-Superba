@@ -52,6 +52,13 @@ npm run preview    # sirve dist/ para probar la versión final (incluye el modo 
 - `build.mjs` también genera `dist/sw.js`, el service worker, con la lista de todos los archivos para que la app funcione sin internet.
 - Las fuentes (Barlow) vienen de Google Fonts; el service worker las guarda la primera vez y después funcionan sin conexión.
 
+### Rendimiento
+
+- **Caché de planos:** leer y dibujar un PDF de CAD tarda segundos. La primera vez que se dibuja un plano se guarda como imagen PNG (sin pérdida) en el navegador, junto con su vista previa y la lectura vectorial para la detección; las siguientes veces abre en décimas de segundo.
+- **Preparación en segundo plano:** mientras se ve el inicio del proyecto, la app prepara uno por uno los planos que todavía no se han abierto (`src/project/warm.js`). Se detiene al abrir un plano.
+- **Memoria:** se mantienen pocos planos en memoria (6 en computadora, 3 en teléfono o tableta); los demás se reabren desde la caché.
+- El PDF original se abre solo cuando hace falta (detección, alineación por ejes, exportar).
+
 ## Estructura
 
 ```

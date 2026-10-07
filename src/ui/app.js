@@ -6,7 +6,7 @@ import { dirty } from '../canvas/render.js';
 import { renderOpts, renderTools } from '../editor/tools.js';
 import { renderPlans } from '../panels/planos.js';
 import { renderLayers } from '../panels/capas.js';
-import { renderSeals, updateCounts } from '../panels/sellos.js';
+import { compactSealNumbers, renderSeals, updateCounts } from '../panels/sellos.js';
 import { exportCSV, exportPNG } from '../export/files.js';
 import { pdfDialog } from '../export/pdf.js';
 import { save } from '../core/storage.js';
@@ -20,7 +20,7 @@ import { newProject, saveProject } from '../project/archive.js';
 import { renderEmpty } from '../home/empty.js';
 
 /* ---------- interfaz general ---------- */
-export function changed() { save(); renderSeals(); renderLayers(); renderOpts(); renderTop(); if (homeOn) renderProject(); dirty(); }
+export function changed() { compactSealNumbers(); save(); renderSeals(); renderLayers(); renderOpts(); renderTop(); if (homeOn) renderProject(); dirty(); }
 
 export function renderTop() {
   $('#btnUndo').disabled = !undoStack.length; $('#btnRedo').disabled = !redoStack.length; updateCounts();
