@@ -66,6 +66,8 @@ export function renderOpts() {
       const lc = ms.every(m => locOf(m) === locOf(ms[0])) ? locOf(ms[0]) : '';
       h += `<span class="lbl">Ubicación</span><select data-o="selLoc">${lc ? '' : '<option value="">Varias</option>'}${['pared', 'losa'].map(v => `<option value="${v}"${v === lc ? ' selected' : ''}>${LOC_NAME[v]}</option>`).join('')}</select>`;
       const st = ms.every(m => m.st === ms[0].st) ? ms[0].st : '';
+      const nm = ms.filter(m => m.mem).length;
+      h += `<label class="chk small" title="Penetración de membrana: la tubería atraviesa una sola cara"><input type="checkbox" data-o="selMem"${nm === ms.length ? ' checked' : ''}${nm && nm < ms.length ? ' data-mixed="1"' : ''}> Membrana</label>`;
       h += `<span class="lbl">Tipo</span><select data-o="selType">${st ? '' : '<option value="">Varios</option>'}${S.sealTypes.map(t => `<option value="${t.id}"${t.id === st ? ' selected' : ''}>${t.name}</option>`).join('')}</select>`;
     }
     if (ms.length === 1 && ms[0].type === 'table') h += `<button class="btn primary" data-o="editTable">Editar tabla</button>`;
@@ -132,7 +134,7 @@ export function renderOpts() {
     h = S.floors.length ? `<span class="hint">Con plantas el plano B queda fijo: arrastre dentro de una planta para mover su nivel del arquitectónico hasta que calce.</span>`
       : `<span class="hint">Arrastre para mover el plano B. Rotación y escala están en la pestaña Planos.</span><button class="btn" data-o="alignStart">Alinear con 2 puntos</button>`;
   }
-  o.innerHTML = h;
+  o.innerHTML = h; o.querySelectorAll('[data-mixed]').forEach(i => i.indeterminate = true);
 }
 
 export let alphaSliding = false;
@@ -185,6 +187,7 @@ export function init() {
     const s = e.target.closest('select[data-o]'); if (!s) return;
     if (s.dataset.o === 'active') { S.active = s.value; save(); renderLayers(); renderOpts(); }
     else if (s.dataset.o === 'moveTo') moveSelToLayer(s.value);
+    else if (s.dataset.o === 'selMem') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (s.checked) m.mem = true; else delete m.mem; } } changed(); renderOpts(); }
     else if (s.dataset.o === 'selLoc' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.loc = s.value; } changed(); }
     else if (s.dataset.o === 'selType' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.st = s.value; } changed(); }
   });

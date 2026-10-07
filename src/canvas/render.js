@@ -251,6 +251,11 @@ export function drawSeal(m, p, isSel) {
   ctx.font = `700 ${m.n >= 100 ? 10.5 : 13}px "Barlow Semi Condensed", Barlow, sans-serif`;
   if (sa < 0.95) { ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = txtOn(t.color) === '#ffffff' ? t.color : '#ffffff'; ctx.strokeText(String(m.n), x, y + .5); }
   ctx.fillStyle = txtOn(t.color); ctx.fillText(String(m.n), x, y + .5);
+  if (m.mem) { // penetración de membrana: la tubería atraviesa una sola cara
+    const bx = -r - 3, by = -r - 3;
+    ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fillStyle = '#21272C'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.font = '700 9.5px "Barlow Semi Condensed", Barlow, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('M', bx, by + .5);
+  }
   if (S.showDiam && m.diam) {
     const txt = m.diam.replace(' mm', ''); ctx.font = '700 11px "Barlow Semi Condensed", Barlow, sans-serif';
     const tw = ctx.measureText(txt).width, bx = r + 4, bh = 15;

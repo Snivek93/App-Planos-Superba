@@ -51,7 +51,8 @@ export function sealRow(m) {
       <input data-act="diam" value="${esc(m.diam || '')}" placeholder="ø" aria-label="Diámetro del sello ${m.n}" title="Diámetro">
       ${m.auto ? '<span class="auto" title="Detectado automáticamente">auto</span>' : ''}
       <input data-act="note" value="${esc(m.note)}" placeholder="Nota: material, observaciones…" aria-label="Nota del sello ${m.n}">
-      <select data-act="loc" aria-label="Ubicación del sello ${m.n}">${['pared', 'losa'].map(v => `<option value="${v}"${locOf(m) === v ? ' selected' : ''}>${LOC_NAME[v]}</option>`).join('')}</select></li>`;
+      <select data-act="loc" aria-label="Ubicación del sello ${m.n}">${['pared', 'losa'].map(v => `<option value="${v}"${locOf(m) === v ? ' selected' : ''}>${LOC_NAME[v]}</option>`).join('')}</select>
+      <label class="chk small mem" title="Penetración de membrana: la tubería atraviesa una sola cara"><input type="checkbox" data-act="mem"${m.mem ? ' checked' : ''}> Membrana</label></li>`;
 }
 
 export function renderSeals() {
@@ -245,6 +246,7 @@ export function init() {
     const m = MK(li.dataset.id); if (!m) return;
     if (t.dataset.act === 'st') { pushUndo(); m.st = t.value; changed(); }
     else if (t.dataset.act === 'loc') { pushUndo(); m.loc = t.value; changed(); }
+    else if (t.dataset.act === 'mem') { pushUndo(); if (t.checked) m.mem = true; else delete m.mem; changed(); }
     else if (t.dataset.act === 'note') { m.note = t.value; save(); }
     else if (t.dataset.act === 'diam') {
       let v = t.value.trim();

@@ -26,10 +26,10 @@ export function exportCSV() {
   const seals = sealsSorted();
   if (!seals.length) return toast('Todavía no hay sellos para exportar.');
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['No.', 'Planta', 'Niveles', 'Multiplicador', 'Ubicación', 'Tipo', 'Diámetro', 'Tubería', 'Pared', 'Origen', 'Nota', 'Capa', 'Plano', 'X', 'Y'].map(q).join(';')];
+  const rows = [['No.', 'Planta', 'Niveles', 'Multiplicador', 'Ubicación', 'Membrana', 'Tipo', 'Diámetro', 'Tubería', 'Pared', 'Origen', 'Nota', 'Capa', 'Plano', 'X', 'Y'].map(q).join(';')];
   for (const m of seals) {
     const l = L(m.layer), w = toWorld(frameOf(m), m.pts[0]);
-    rows.push([m.n, sealFloor(m)?.name || '', joinY(sealLevels(m).lv), sealWeight(m), LOC_NAME[locOf(m)], ST[m.st]?.name, m.diam || '', m.sys || '', m.wall || '', m.auto ? 'Automático' : 'Manual', m.note, l.name, l.plan, Math.round(w[0]), Math.round(w[1])].map(q).join(';'));
+    rows.push([m.n, sealFloor(m)?.name || '', joinY(sealLevels(m).lv), sealWeight(m), LOC_NAME[locOf(m)], m.mem ? 'Sí' : '', ST[m.st]?.name, m.diam || '', m.sys || '', m.wall || '', m.auto ? 'Automático' : 'Manual', m.note, l.name, l.plan, Math.round(w[0]), Math.round(w[1])].map(q).join(';'));
   }
   const sumBlock = (title, list, wfn) => {
     rows.push('', [q(title), q('Pared'), q('Losa'), q('Total')].join(';'));

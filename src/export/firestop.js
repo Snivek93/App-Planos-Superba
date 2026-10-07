@@ -146,8 +146,8 @@ export function fsRows(cfg, sh) {
     const {lv: levels, f, below} = sealLevels(m);
     const loc = locOf(m), wall = loc === 'pared' ? (m.wall || '(sin tipo de pared)') : '';
     for (const lv of levels) {
-      const key = [lv, loc, m.st, wall].join('\u0001');
-      const r = map.get(key) || {lv, loc, st:m.st, wall, n:0, planta: f ? f.name : '', auto:0, below};
+      const mem = !!m.mem, key = [lv, loc, m.st, wall, mem].join('\u0001');
+      const r = map.get(key) || {lv, loc, st:m.st, wall, mem, n:0, planta: f ? f.name : '', auto:0, below};
       r.n++; if (m.auto) r.auto++; map.set(key, r);
     }
   }
@@ -155,8 +155,8 @@ export function fsRows(cfg, sh) {
   return rows.map(r => {
     const t = ST[r.st], c = cfg.cats[r.st] || {}, w = r.loc === 'losa' ? cfg.losa : (cfg.walls[r.wall] || {N:'Panel de Yeso', O:'2 Horas'});
     const L = c.L || guessL(t.name), D = c.D ?? '';
-    const zona = r.loc === 'losa' ? `${t.name} · Losa` : `${t.name} · ${r.wall}`;
-    const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : ''].filter(Boolean).join(' · ');
+    const zona = (r.loc === 'losa' ? `${t.name} · Losa` : `${t.name} · ${r.wall}`) + (r.mem ? ' · Membrana' : '');
+    const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.mem ? 'penetración de membrana (atraviesa una sola cara)' : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : ''].filter(Boolean).join(' · ');
     const nivel = /^-?\d+(\.\d+)?$/.test(r.lv) ? +r.lv : r.lv;
     const nb = x => x === '' || x == null ? undefined : +x;
     const J = c.J === '' || c.J == null ? 0 : (+c.J > 1 ? +c.J/100 : +c.J);

@@ -196,3 +196,6 @@ input[type=range]{width:100%;accent-color:var(--tinta)}
 #mHtml .apick-h select{flex:1;min-width:0}
 #mHtml .apick .checks{max-height:180px}
 #mHtml .apicker [data-aadd]{justify-self:start}
+.sealList .mem{grid-column:2 / -1;margin:0;display:flex;align-items:center;gap:6px;font-size:13px}
+.sealList .mem input{width:auto}
+#opts label.chk{display:inline-flex;align-items:center;gap:5px;margin:0;white-space:nowrap}
