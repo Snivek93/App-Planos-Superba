@@ -17,6 +17,7 @@ import { curTab, homeOn, modelVars, renderSheetSel, showHome } from '../project/
 import { addArqPick, newPairDialog } from '../project/sheets.js';
 import { renderProject } from '../home/home.js';
 import { newProject, saveProject } from '../project/archive.js';
+import { renderOpBubble } from './opacity.js';
 import { renderEmpty } from '../home/empty.js';
 
 /* ---------- interfaz general ---------- */
@@ -24,7 +25,7 @@ export function changed() { compactSealNumbers(); save(); renderSeals(); renderL
 
 export function renderTop() {
   $('#btnUndo').disabled = !undoStack.length; $('#btnRedo').disabled = !redoStack.length; updateCounts();
-  renderSheetSel();
+  renderSheetSel(); renderOpBubble();
 }
 
 export function setTab(t) {

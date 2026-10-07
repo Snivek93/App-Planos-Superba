@@ -8,6 +8,7 @@ import { save } from '../core/storage.js';
 import { closePanel, toast } from '../ui/app.js';
 import { ensureVec, isDot, pathCache, ruleCache } from '../detect/vector.js';
 import { clearAutoSeals, runAuto } from '../detect/cross.js';
+import { renderOpBubble } from '../ui/opacity.js';
 import { startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
 
 /* panel */
@@ -24,6 +25,7 @@ export function ruleRow(r, isFire) {
 }
 
 export function renderAuto() {
+  renderOpBubble();
   const a = S.auto, z = a.zone;
   $('#tab-auto').innerHTML = `
     <h3>Detección automática</h3>

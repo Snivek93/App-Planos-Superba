@@ -13,6 +13,7 @@ import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/
 import { addFloor, autoAlignFloor, deleteFloor, fitRect, floorById, floorRectWorld, floorsHtml } from '../plans/floors.js';
 import { aLevelsLabel, curSheet, showHome } from '../project/model.js';
 import { changePage, chooseA } from '../project/sheets.js';
+import { renderOpBubble } from '../ui/opacity.js';
 import { arqLevelsHtml, levelsChange, levelsClick } from '../plans/arqlevels.js';
 
 /* ---------- panel: planos ---------- */
@@ -52,6 +53,7 @@ export function planCard(k) {
 }
 
 export function renderPlans() {
+  renderOpBubble();
   const sh = curSheet(), el = $('#tab-planos');
   if (!sh) { el.innerHTML = `<p class="help">No hay ningún plano abierto.</p><div class="btnrow"><button class="btn primary" data-act="goProj">Ir al inicio del proyecto</button></div>`; return; }
   if (sh.kind === 'arq') { el.innerHTML = planCard('A') + (RT.A.bmp ? arqLevelsHtml() : '') + `<p class="help"><b>Hoja de arquitectónicos.</b> Marque aquí las paredes cortafuego, a mano o con la detección automática. Todos los planos de instalaciones que usen esta hoja como plano A ven estas paredes, y lo que se marque o corrija en ellos vuelve aquí.</p>`; return; }

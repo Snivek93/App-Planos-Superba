@@ -65,3 +65,12 @@ input[type=text],input[type=number],input:not([type]){height:32px;border:1px sol
 .ab span{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;font:700 13px "Barlow Semi Condensed",Barlow,sans-serif;color:#fff}
 #stage.dragover::after{content:"Suelte los planos aquí";position:absolute;inset:10px;border:2px dashed var(--foco);border-radius:14px;display:grid;place-items:center;font-size:20px;font-weight:600;color:var(--foco);background:color-mix(in srgb,var(--panel) 70%,transparent);z-index:9}
 
+#opWrap{position:relative}
+#btnOp.on{background:var(--panel-2)}
+#opPop{position:fixed;z-index:41;width:min(320px,calc(100vw - 24px));background:var(--panel);border:1px solid var(--linea);border-radius:14px;box-shadow:0 10px 30px rgba(20,24,28,.18);padding:10px 14px 8px}
+#opPop::before{content:"";position:absolute;top:-7px;left:calc(var(--tip,50%) - 6px);width:12px;height:12px;background:var(--panel);border-left:1px solid var(--linea);border-top:1px solid var(--linea);transform:rotate(45deg)}
+#opPop .oprow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:6px 0}
+#opPop .oprow+.oprow{border-top:1px solid var(--linea)}
+#opPop label{font-size:13px;font-weight:600}
+#opPop output{font-size:13px;font-variant-numeric:tabular-nums;color:var(--tinta-2,inherit);grid-row:1;grid-column:2}
+#opPop input{grid-column:1 / -1;width:100%;margin:2px 0}
