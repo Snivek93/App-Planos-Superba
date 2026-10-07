@@ -13,6 +13,7 @@ import { save } from '../core/storage.js';
 import { changed, openPanel, setTab, toast } from '../ui/app.js';
 import { LOC_NAME, locOf } from '../core/levels.js';
 import { cancelFloor, floorDraft, floorsVars, solo } from '../plans/floors.js';
+import { setWfMode, wallFixCancelDraft, wallFixFinish, wfDraft, wfMode } from '../detect/wallfix.js';
 
 /* ---------- herramientas ---------- */
 export function renderTools() {
@@ -22,6 +23,7 @@ export function renderTools() {
 
 export function setTool(t) {
   if (tool === 'poly' && t !== 'poly' && cur) finishPoly();
+  if (tool === 'wallfix' && t !== 'wallfix' && wfDraft) wallFixFinish();
   if (t !== 'align') stateVars.align = null;
   if (t === 'moveB' && !RT.B.bmp) { toast('Primero suba el plano B.'); return; }
   if (solo && t !== 'floorA' && t !== 'floorB') { floorsVars.solo = null; floorsVars.floorDraft = null; }
@@ -109,7 +111,11 @@ export function renderOpts() {
   } else if (tool === 'lvlRect') {
     h = `<span class="hint">Arrastre un rectángulo alrededor de la planta de ese nivel, incluyendo su título (por ejemplo "PLANTA NIVEL 6").</span><button class="btn" data-o="cancelTool">Cancelar</button>`;
   } else if (tool === 'wallfix') {
-    h = `<b>Afinar paredes</b><span class="hint">Toque una columna, símbolo o trozo para quitarlo de las paredes (o devolverlo). Arrastre un rectángulo para borrar una zona; toque dentro de una zona borrada para restaurarla.</span><button class="btn primary" data-o="cancelTool">Terminar</button>`;
+    const seg = `<div class="seg" role="group" aria-label="Modo">${[['quitar', 'Quitar'], ['agregar', 'Agregar']].map(([v, t]) => `<button data-o="wfMode" data-v="${v}" class="${wfMode === v ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+    h = `<b>Afinar paredes</b>${seg}` + (wfMode === 'agregar'
+      ? `<span class="hint">${wfDraft ? 'Toque el siguiente punto. Toque otra vez el último punto (o Enter) para terminar.' : 'Arrastre para trazar una línea, o toque punto por punto para una polilínea. Sirve para cargadores sobre puertas y tramos que faltan.'}</span>${wfDraft ? '<button class="btn" data-o="wfDone">Terminar trazo</button><button class="btn" data-o="wfCancel">Descartar</button>' : ''}`
+      : `<span class="hint">Toque una columna, símbolo, trozo, cargador o tramo agregado para quitarlo (o devolverlo). Arrastre un rectángulo para borrar una zona; toque dentro de una zona borrada para restaurarla.</span>`)
+      + `<button class="btn primary" data-o="cancelTool">Terminar</button>`;
   } else if (tool === 'zone') {
     h = `<span class="hint">Arrastre un rectángulo alrededor del nivel que quiere revisar.</span><button class="btn" data-o="cancelTool">Cancelar</button>`;
   } else if (tool === 'table') {
@@ -148,6 +154,9 @@ export function init() {
     else if (a === 'alignCancel') { stateVars.align = null; setTool('select'); }
     else if (a === 'alignStart') startAlign();
     else if (a === 'cancelTool') setTool('select');
+    else if (a === 'wfMode') setWfMode(b.dataset.v);
+    else if (a === 'wfDone') wallFixFinish();
+    else if (a === 'wfCancel') wallFixCancelDraft();
     else if (a === 'floorCancel') cancelFloor();
     else if (a === 'pickDone') { setTool('select'); setTab('auto'); openPanel(); }
     else if (a === 'newCat') addCategory(true);

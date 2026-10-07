@@ -15,7 +15,7 @@ import { ask, changed, toast } from '../ui/app.js';
 import { floorAtWorld, floorRect, frameAt, frameOf } from '../plans/floors.js';
 import { pickAt } from '../detect/pick.js';
 import { renderAuto } from '../panels/deteccion.js';
-import { wallFixRect, wallFixTap } from '../detect/wallfix.js';
+import { wallFixAddLine, wallFixAddTap, wallFixRect, wallFixTap, wfMode } from '../detect/wallfix.js';
 import { finishLevelRect } from '../plans/arqlevels.js';
 
 /* ---------- eventos del puntero ---------- */
@@ -158,7 +158,8 @@ export function up(p, e) {
     case 'erase': if (g.pushed) changed(); break;
     case 'moveB': if (g.fl) { g.fl.how = 'manual'; g.fl.info = 'Ajustada a mano'; } changed(); renderPlans(); break;
     case 'wallfix': {
-      if (dist(g.start, g.end) < 8) wallFixTap(s2w(...g.end), 9/view.z);
+      if (wfMode === 'agregar') { if (dist(g.start, g.end) < 8) wallFixAddTap(s2w(...g.end), 9/view.z); else wallFixAddLine(s2w(...g.start), s2w(...g.end)); }
+      else if (dist(g.start, g.end) < 8) wallFixTap(s2w(...g.end), 9/view.z);
       else wallFixRect(s2w(...g.start), s2w(...g.end));
       dirty(); break;
     }
@@ -283,7 +284,7 @@ export function init() {
   cv.addEventListener('pointermove', e => {
     const p = pos(e); stateVars.hover = p;
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, p);
-    if (!gesture) { if ((tool === 'poly' && cur) || align) dirty(); return; }
+    if (!gesture) { if ((tool === 'poly' && cur) || align || tool === 'wallfix') dirty(); return; }
     if (gesture.kind === 'pinch') {
       if (ptrs.size < 2) return;
       const [a, b] = [...ptrs.values()], g = gesture, c = mid(a, b);

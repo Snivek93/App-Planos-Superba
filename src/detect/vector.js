@@ -6,6 +6,7 @@ import { planFrames, solo } from '../plans/floors.js';
 import { renderAuto } from '../panels/deteccion.js';
 import { ensurePdf } from '../plans/load.js';
 import { DB } from '../core/storage.js';
+import { detectLintels } from './lintels.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
@@ -415,6 +416,18 @@ export function overlayCanvas(k, rules, maxPx) {
       g2.putImageData(O, 0, 0);
     } catch (e) { console.warn(e); }
   }
+  if (fire.size && k === 'A') {
+    try {
+      const sig = lintSig(rules.map(([r]) => r), fx);
+      if (!rt.lint || rt.lint.sig !== sig || rt.lint.vec !== rt.vec) {
+        const O = c.getContext('2d', {willReadFrequently:true}).getImageData(0, 0, c.width, c.height);
+        rt.lint = {sig, vec:rt.vec, ...detectLintels(O.data, c.width, c.height, sc, rt.vec)};
+        setTimeout(renderAuto, 0);
+      }
+      g.setTransform(sc, 0, 0, sc, 0, 0); g.globalCompositeOperation = 'source-over';
+      paintExtras(g, fireExtras(), FIRE_HL, FIRE_HL);
+    } catch (e) { console.warn(e); }
+  }
   const ko = fire.size && rt.bmp ? knockout(c, rt.bmp, [...fire].map(r => r.kind === 'f' ? r.key.slice(1, 8) : r.color).filter(Boolean)) : null;
   return {c, sc, ko};
 }
@@ -446,12 +459,38 @@ function knockout(c, bmp, colors) {
 
 export const hlOverlay = {A:null, B:null};
 
+/* --- cargadores sobre puertas y paredes agregadas a mano (herramienta Afinar) --- */
+function lintSig(rules, fx) { return rules.map(r => r.id + ':' + r.key + ':' + (r.noDots !== false)).join('|') + '#' + (fx ? fx.src + ':' + fx.excl.join(',') + ':' + fx.masks.length : ''); }
+const inMask = (fx, p) => fx && fx.masks.some(m => p[0] >= m[0] && p[0] <= m[2] && p[1] >= m[1] && p[1] <= m[3]);
+/* Lo que se suma a las paredes del plano A, en coordenadas del plano A:
+   lint: cargadores encontrados (sin los quitados a mano ni los que caen en una zona borrada); adds: trazos a mano. */
+export function fireExtras() {
+  const rt = RT.A, fx = fireEdits('A');
+  const off = (fx && fx.noLint) || [];
+  const lint = S.auto.lintels === false || !rt.lint ? [] : rt.lint.list.filter(l => {
+    const mid = [(l.a[0] + l.b[0])/2, (l.a[1] + l.b[1])/2], G = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]);
+    return !inMask(fx, mid) && !off.some(q => Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.max(G/2, 4));
+  });
+  return {lint, adds: (fx && fx.adds) || [], tw: rt.lint ? rt.lint.tw : 0};
+}
+/* grosor para trazar paredes a mano: el típico de las paredes detectadas */
+export function typicalWallW() { const t = RT.A.lint && RT.A.lint.tw; return t > 0 ? t : 8; }
+export function paintExtras(g, ex, cLint, cAdd) {
+  g.lineJoin = 'miter'; g.lineCap = 'butt';
+  g.strokeStyle = cLint;
+  for (const l of ex.lint) { g.lineWidth = l.w; g.beginPath(); g.moveTo(l.a[0], l.a[1]); g.lineTo(l.b[0], l.b[1]); g.stroke(); }
+  g.strokeStyle = cAdd; g.lineCap = 'square';
+  for (const a of ex.adds) { if (a.pts.length < 2) continue; g.lineWidth = a.w; g.beginPath(); a.pts.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.stroke(); }
+}
+/* asegura que los cargadores del plano A estén calculados (se calculan junto con el resaltado) */
+export function ensureLintels() { if (RT.A.vec && S.auto.fire.some(r => r.on)) overlayFor('A'); return fireExtras(); }
+
 export function overlayFor(k) {
   const rt = RT[k], p = S.plans[k];
   if (!rt.vec) return null;
   const rules = autoRules().filter(([r]) => r.on && r.plan === k);
   if (!rules.length) return null;
-  const sig = rules.map(([r, f]) => [r.id, r.key, r.noDots, f ? FIRE_HL : r.hl].join(':')).join('|') + '|' + p.w + 'x' + p.h + '|' + editsSig(fireEdits(k));
+  const sig = rules.map(([r, f]) => [r.id, r.key, r.noDots, f ? FIRE_HL : r.hl].join(':')).join('|') + '|' + p.w + 'x' + p.h + '|' + editsSig(fireEdits(k)) + '|' + (S.auto.lintels !== false);
   const o = rt.hl;
   if (o && o.sig === sig && o.vec === rt.vec) return o;
   const oc = overlayCanvas(k, rules, isMobile ? 3000 : 4096);

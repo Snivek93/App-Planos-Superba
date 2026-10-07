@@ -10,6 +10,7 @@ import { ensureVec, isDot, pathCache, ruleCache } from '../detect/vector.js';
 import { clearAutoSeals, runAuto } from '../detect/cross.js';
 import { renderOpBubble } from '../ui/opacity.js';
 import { startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
+import { fireExtras } from '../detect/vector.js';
 
 /* panel */
 export function ruleHasDots(r) { const v = RT[r.plan].vec; return !!(v && (v.byKey.get(r.key) || []).some(isDot)); }
@@ -33,6 +34,7 @@ export function renderAuto() {
     <div class="sect"><header><h3>Paredes cortafuego (plano A)</h3></header>
       <ul class="cats rules">${a.fire.map(r => ruleRow(r, true)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
       <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button>${a.fire.length ? '<button class="btn" data-act="wallFix">Afinar paredes a mano</button>' : ''}</div>
+      ${a.fire.length ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-act="lintels"${a.lintels !== false ? ' checked' : ''}> Agregar cargadores sobre puertas entre paredes cortafuego${a.lintels !== false && RT.A.lint ? ` <span class="muted">(${fireExtras().lint.length} encontrados)</span>` : ''}</label>` : ''}
       ${wallFixSummary() ? `<p class="help" style="margin-top:6px">Ajustes a mano: ${esc(wallFixSummary())}. <button class="linkbtn" data-act="wallFixReset">Restaurar todo</button></p>` : ''}</div>
     <div class="sect"><header><h3>Tuberías (plano B)</h3></header>
       <ul class="cats rules">${a.pipes.map(r => ruleRow(r, false)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
@@ -90,5 +92,6 @@ export function init() {
     else if (a === 'catMode') { S.auto.catMode = t.value; save(); }
     else if (a === 'showDiam') { S.showDiam = t.checked; save(); dirty(); }
     else if (a === 'show') { S.auto.show = t.checked; save(); dirty(); }
+    else if (a === 'lintels') { S.auto.lintels = t.checked; RT.A.hl = null; save(); dirty(); setTimeout(renderAuto, 50); }
   });
 }

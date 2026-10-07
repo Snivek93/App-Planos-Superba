@@ -1,12 +1,12 @@
 /* Lienzo principal: tamaño, dibujo de planos, marcas y sellos, y copias reducidas para dibujar rápido. */
 import { $, ST, txtOn } from '../core/constants.js';
 import { align, cur, gesture, hover, L, RT, S, sel, tool, view } from '../core/state.js';
-import { dist, M, rectPts, toWorld, w2s } from '../core/geometry.js';
+import { dist, M, rectPts, s2w, toLocal, toWorld, w2s } from '../core/geometry.js';
 import { drawTable } from './tables.js';
 import { locOf } from '../core/levels.js';
 import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
-import { drawAutoHighlights, drawKnockout } from '../detect/vector.js';
-import { wallFixMasks } from '../detect/wallfix.js';
+import { drawAutoHighlights, drawKnockout, FIRE_HL, typicalWallW } from '../detect/vector.js';
+import { wallFixLintels, wallFixMasks, wallFixPreview, wfDraft, wfMode } from '../detect/wallfix.js';
 import { drawLevelRects } from '../plans/arqlevels.js';
 import { drawDetail, scheduleDetail } from './detail.js';
 
@@ -84,7 +84,24 @@ export function draw() {
     const A = S.plans.A, q = [[m[0], m[1]], [m[2], m[1]], [m[2], m[3]], [m[0], m[3]]].map(v => w2s(...toWorld(A, v)));
     ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]); ctx.beginPath(); q.forEach((v, i) => i ? ctx.lineTo(v[0], v[1]) : ctx.moveTo(v[0], v[1])); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
   }
-  if (gesture && gesture.kind === 'wallfix' && dist(gesture.start, gesture.end) >= 8) {
+  if (tool === 'wallfix' && !solo) {
+    const A = S.plans.A, toS = q => w2s(...toWorld(A, q));
+    // cargadores sobre puertas encontrados: contorno azul; los quitados, en gris
+    for (const l of wallFixLintels()) {
+      const a = toS(l.a), b = toS(l.b), wpx = Math.max(4, l.w*A.s*view.z), dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1, nx = -dy/len*wpx/2, ny = dx/len*wpx/2;
+      ctx.strokeStyle = l.off ? 'rgba(90,90,90,.8)' : '#1E6FB8'; ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(a[0]+nx, a[1]+ny); ctx.lineTo(b[0]+nx, b[1]+ny); ctx.lineTo(b[0]-nx, b[1]-ny); ctx.lineTo(a[0]-nx, a[1]-ny); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // trazo en curso del modo Agregar, y línea del arrastre
+    let pv = wallFixPreview(hover ? s2w(...hover) : null);
+    if (!pv && wfMode === 'agregar' && gesture && gesture.kind === 'wallfix' && dist(gesture.start, gesture.end) >= 8) pv = {pts:[toLocal(A, s2w(...gesture.start)), toLocal(A, s2w(...gesture.end))], w: typicalWallW()};
+    if (pv && pv.pts.length) {
+      ctx.save(); ctx.globalAlpha = 0.75; ctx.strokeStyle = FIRE_HL; ctx.lineCap = 'square'; ctx.lineJoin = 'miter'; ctx.lineWidth = Math.max(3, pv.w*A.s*view.z);
+      ctx.beginPath(); pv.pts.forEach((q, i) => { const v = toS(q); i ? ctx.lineTo(v[0], v[1]) : ctx.moveTo(v[0], v[1]); }); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = '#C81E2B'; for (const q of pv.pts.slice(0, wfDraft ? wfDraft.pts.length : 0)) { const v = toS(q); ctx.beginPath(); ctx.arc(v[0], v[1], 3.5, 0, 7); ctx.fill(); }
+    }
+  }
+  if (gesture && gesture.kind === 'wallfix' && wfMode !== 'agregar' && dist(gesture.start, gesture.end) >= 8) {
     const [a, b] = [gesture.start, gesture.end];
     ctx.fillStyle = 'rgba(200,30,43,.10)'; ctx.strokeStyle = '#C81E2B'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
     ctx.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0]-a[0]), Math.abs(b[1]-a[1]));

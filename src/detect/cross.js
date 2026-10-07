@@ -6,7 +6,7 @@ import { placeSeal } from '../editor/pointer.js';
 import { pushUndo } from '../core/undo.js';
 import { changed, renderTop, toast } from '../ui/app.js';
 import { floorRectWorld, frameOf } from '../plans/floors.js';
-import { ensureLabels, ensureVec, fillColors, fireEdits, maskByPlan, paintCover, paintEvents, ruleCache, visibleEvents } from './vector.js';
+import { ensureLabels, ensureLintels, ensureVec, fillColors, fireEdits, maskByPlan, paintCover, paintEvents, paintExtras, ruleCache, visibleEvents } from './vector.js';
 import { RT } from '../core/state.js';
 import { renderAuto } from '../panels/deteccion.js';
 
@@ -39,6 +39,8 @@ export function paintRules(g, rules, colorOf, res, ox, oy, minPx, fr, clip) {
   g.restore();
 }
 
+// tonos de rojo reservados en la capa de paredes para cargadores y trazos a mano (índices 19 y 20)
+const LINT_V = 240, ADD_V = 252, LINT_I = Math.round(LINT_V/12) - 1, ADD_I = Math.round(ADD_V/12) - 1;
 export async function runAuto() {
   const fr = S.auto.fire.filter(r => r.on), pr = S.auto.pipes.filter(r => r.on);
   if (!fr.length) return toast('Primero elija al menos un tipo de pared cortafuego en el plano A.');
@@ -66,6 +68,7 @@ export async function runAuto() {
   }
   const labelsBy = {};
   if (S.auto.diam) for (const r of pr) { try { labelsBy[r.plan] = labelsBy[r.plan] || await ensureLabels(r.plan); } catch (e) { labelsBy[r.plan] = []; } }
+  const extras = ensureLintels();
   const found = [];
   for (const job of jobs) {
     const pad = 10, reg = [job.reg[0]-pad, job.reg[1]-pad, job.reg[2]+pad, job.reg[3]+pad];
@@ -86,6 +89,16 @@ export async function runAuto() {
       const cols = fillColors(fr);
       if (RT.A.vec) paintCover(gb, visibleEvents(RT.A.vec, fr, fireEdits('A')), cols[0]);
       maskByPlan(F, gb.getImageData(0, 0, W, H).data, W, H, cols);
+    }
+    // cargadores sobre puertas y paredes agregadas a mano: también son pared cortafuego
+    if (extras.lint.length || extras.adds.length) {
+      const A = job.frames.A[0], mA = M(A), clipA = job.frames.A[1];
+      gf.save(); gf.setTransform(res, 0, 0, res, -reg[0]*res, -reg[1]*res); gf.transform(mA[0], mA[1], mA[2], mA[3], mA[4], mA[5]);
+      if (clipA) { gf.beginPath(); gf.rect(clipA[0], clipA[1], clipA[2]-clipA[0], clipA[3]-clipA[1]); gf.clip(); }
+      paintExtras(gf, extras, `rgb(${LINT_V},0,0)`, `rgb(${ADD_V},0,0)`);
+      gf.restore();
+      const E = gf.getImageData(0, 0, W, H).data;
+      for (let i = 0, n = W*H*4; i < n; i += 4) if (E[i+3] > 60 && (E[i] === LINT_V || E[i] === ADD_V)) { F[i] = E[i]; F[i+3] = 255; }
     }
     const gp = mk();
     const mark = new Uint8Array(W*H), stack = new Int32Array(W*H);
@@ -110,7 +123,8 @@ export async function runAuto() {
         }
         if (cnt < 2) continue;
         const fi = +Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
-        found.push({r, job, x: reg[0] + (sx/cnt + .5)/res, y: reg[1] + (sy/cnt + .5)/res, ext: Math.max(x1 - x0, y1 - y0)/res, wall: fr[Math.max(0, Math.min(fr.length - 1, fi))]});
+        const wall = fi === LINT_I ? {name:'Cargador sobre puerta'} : fi === ADD_I ? {name:'Pared agregada a mano'} : fr[Math.max(0, Math.min(fr.length - 1, fi))];
+        found.push({r, job, x: reg[0] + (sx/cnt + .5)/res, y: reg[1] + (sy/cnt + .5)/res, ext: Math.max(x1 - x0, y1 - y0)/res, wall});
       }
     });
   }
