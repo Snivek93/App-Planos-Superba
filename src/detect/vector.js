@@ -245,6 +245,10 @@ export function visibleEvents(vec, rules, fx) {
   }
   const U = bbs.reduce((u, b) => [Math.min(u[0], b[0]), Math.min(u[1], b[1]), Math.max(u[2], b[2]), Math.max(u[3], b[3])], [Infinity, Infinity, -Infinity, -Infinity]);
   const over = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  // Con estilos de relleno, lo que tapa la pared se decide mirando el plano dibujado (maskByPlan): el PDF puede
+  // tener recortes (clip) y transparencias que la lectura vectorial no ve, y un relleno gris de zona que en el
+  // plano queda recortado alrededor de las paredes las borraba enteras. Para trazos se mantiene el orden de pintura.
+  const occlude = !rules.every(r => r.kind === 'f' && /^f#[0-9a-f]{6}/i.test(r.key || ''));
   const ev = [], cover = []; let started = false, count = 0;
   for (const s of vec.shapes) {
     const r = byKey.get(s.key);
@@ -256,7 +260,7 @@ export function visibleEvents(vec, rules, fx) {
     if (!started || s.k !== 'f' || s.a !== undefined || !over(s.bb, U)) continue;
     if (!bbs.some(b => over(s.bb, b))) continue;
     // puntos, etiquetas y otros símbolos dibujados encima de la pared no la cortan: la pared sigue corrida debajo
-    if (isSymbol(s)) cover.push(s); else ev.push([s, null]);
+    if (isSymbol(s)) cover.push(s); else if (occlude) ev.push([s, null]);
   }
   ev.count = count; ev.bb = U; ev.cover = cover;
   vec.ev.set(sig, ev);
@@ -311,14 +315,34 @@ export function autoRules() { return [...S.auto.fire.map(r => [r, true]), ...S.a
    el color de la pared. Corrige lo que la lectura vectorial no puede saber: partes recortadas por el PDF,
    imágenes o achurados dibujados encima, etc. (los recuadros en esquinas). Solo para estilos de relleno.
    data: píxeles del resaltado (se modifican); plan: píxeles del plano en el mismo lugar. */
+/* ¿Este píxel del plano muestra el color de la pared? Además de un color parecido, acepta el mismo tono
+   aclarado u oscurecido por un achurado o una zona gris semitransparente dibujada encima (pasa en sótanos). */
+function colorTests(colors) {
+  return colors.map(c => {
+    const n = parseInt(String(c).slice(1, 7), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), ch = mx - mn;
+    return {r, g, b, ch, h: ch ? hueOf(r, g, b, mx, ch) : -1};
+  });
+}
+function hueOf(r, g, b, mx, ch) {
+  let h = mx === r ? ((g - b)/ch) % 6 : mx === g ? (b - r)/ch + 2 : (r - g)/ch + 4;
+  return (h*60 + 360) % 360;
+}
+function isWallPx(r, g, b, tests) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), ch = mx - mn;
+  for (const t of tests) {
+    const dr = r - t.r, dg = g - t.g, db = b - t.b;
+    if (dr*dr + dg*dg + db*db < 6400) return true;
+    if (t.ch >= 80 && ch >= Math.max(24, t.ch*0.25)) { let d = Math.abs(hueOf(r, g, b, mx, ch) - t.h); if (d > 180) d = 360 - d; if (d < 13) return true; }
+  }
+  return false;
+}
 export function maskByPlan(data, plan, W, H, colors) {
   if (!colors.length) return;
-  const rgb = colors.map(c => { const n = parseInt(String(c).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
-  const T2 = 80*80, ok = new Uint8Array(W*H);
+  const tests = colorTests(colors), ok = new Uint8Array(W*H);
   for (let i = 0, n = W*H; i < n; i++) {
     if (!data[i*4+3]) continue;
-    const r = plan[i*4], g = plan[i*4+1], b = plan[i*4+2];
-    for (const c of rgb) { const dr = r - c[0], dg = g - c[1], db = b - c[2]; if (dr*dr + dg*dg + db*db < T2) { ok[i] = 1; break; } }
+    if (isWallPx(plan[i*4], plan[i*4+1], plan[i*4+2], tests)) ok[i] = 1;
   }
   // tolerancia de 2 píxeles para bordes suavizados y achurados finos sobre la pared
   const R = 2;
@@ -338,8 +362,7 @@ export function maskByPlanFull(data, W, H, bmp, colors, cover) {
   const t = document.createElement('canvas'); t.width = BW; t.height = BH;
   const tg = t.getContext('2d', {willReadFrequently:true}); tg.drawImage(bmp, 0, 0);
   if (cover) { tg.save(); tg.setTransform(cover.sc, 0, 0, cover.sc, 0, 0); paintCover(tg, cover.ev, colors[0]); tg.restore(); }
-  const rgb = colors.map(c => { const n = parseInt(String(c).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
-  const T2 = 80*80, ok = new Uint8Array(W*H);
+  const tests = colorTests(colors), ok = new Uint8Array(W*H);
   const STRIP = 256;
   for (let sy = 0; sy < BH; sy += STRIP) {
     const sh = Math.min(STRIP + 2, BH - sy), P = tg.getImageData(0, sy, BW, sh).data;
@@ -351,8 +374,8 @@ export function maskByPlanFull(data, W, H, bmp, colors, cover) {
         const i = y*W + x; if (!data[i*4+3] || ok[i]) continue;
         const nx0 = Math.max(0, Math.floor(x/k) - 1), nx1 = Math.min(BW - 1, Math.ceil((x + 1)/k));
         search: for (let ny = ny0; ny <= ny1; ny++) for (let nx = nx0; nx <= nx1; nx++) {
-          const j = ((ny - sy)*BW + nx)*4, r = P[j], g = P[j+1], b = P[j+2];
-          for (const c of rgb) { const dr = r - c[0], dg = g - c[1], db = b - c[2]; if (dr*dr + dg*dg + db*db < T2) { ok[i] = 1; break search; } }
+          const j = ((ny - sy)*BW + nx)*4;
+          if (isWallPx(P[j], P[j+1], P[j+2], tests)) { ok[i] = 1; break search; }
         }
       }
     }
@@ -400,13 +423,13 @@ function knockout(c, bmp, colors) {
     const tg = t.getContext('2d', {willReadFrequently:true}); tg.imageSmoothingQuality = 'high'; tg.drawImage(bmp, 0, 0, W, H);
     const P = tg.getImageData(0, 0, W, H), pd = P.data, O = c.getContext('2d', {willReadFrequently:true}).getImageData(0, 0, W, H).data;
     const fr = parseInt(FIRE_HL.slice(1, 3), 16), fg = parseInt(FIRE_HL.slice(3, 5), 16), fb = parseInt(FIRE_HL.slice(5, 7), 16);
-    const rgb = colors.map(col => { const n = parseInt(String(col).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
-    const T2 = 120*120;
+    const tests = colorTests(colors), rgb = tests.map(t => [t.r, t.g, t.b]), T2 = 120*120;
     for (let i = 0; i < pd.length; i += 4) {
       let on = false;
       if (O[i+3] > 40 && Math.abs(O[i] - fr) < 30 && Math.abs(O[i+1] - fg) < 30 && Math.abs(O[i+2] - fb) < 30) {
         const r = pd[i], g = pd[i+1], b = pd[i+2];
-        for (const q of rgb) { const dr = r - q[0], dg = g - q[1], db = b - q[2]; if (dr*dr + dg*dg + db*db < T2) { on = true; break; } }
+        if (isWallPx(r, g, b, tests)) on = true;
+        else for (const q of rgb) { const dr = r - q[0], dg = g - q[1], db = b - q[2]; if (dr*dr + dg*dg + db*db < T2) { on = true; break; } }
       }
       if (on) { pd[i] = pd[i+1] = pd[i+2] = 255; pd[i+3] = 255; } else pd[i+3] = 0;
     }
