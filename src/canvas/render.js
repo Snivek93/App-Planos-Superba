@@ -8,6 +8,7 @@ import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
 import { drawAutoHighlights } from '../detect/vector.js';
 import { wallFixMasks } from '../detect/wallfix.js';
 import { drawLevelRects } from '../plans/arqlevels.js';
+import { drawDetail, scheduleDetail } from './detail.js';
 
 /* ---------- lienzo ---------- */
 export let stage;
@@ -51,6 +52,7 @@ export function draw() {
   ctx.clearRect(0, 0, cv.width, cv.height);
   VM = [dpr*view.z, 0, 0, dpr*view.z, dpr*view.x, dpr*view.y]; UI = dpr;
   for (const k of ['A', 'B']) drawPlan(k);
+  scheduleDetail();
   if (!solo) drawAutoHighlights();
   const seals = solo ? [] : drawLayers(true);
   if (cur) { const l = L(cur.layer); if (l) { const p = frameOf(cur); setWorld(p); drawMark(cur, l, p, false); } }
@@ -133,6 +135,7 @@ export function drawPlan(k) {
     ctx.globalAlpha = solo ? 1 : p.opacity;
     ctx.globalCompositeOperation = p.blend === 'multiply' || src === rt.tinted ? 'multiply' : 'source-over';
     blitPart(src, p, fr, clip);
+    drawDetail(k, p, fr, clip, src === rt.tinted);
     ctx.restore();
   }
 }
