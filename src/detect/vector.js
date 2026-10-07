@@ -2,7 +2,7 @@
 import { isMobile, PDF_UNIT, pdfjsLib } from '../core/constants.js';
 import { RT, S } from '../core/state.js';
 import { blitPart, ctx, dirty, setWorld } from '../canvas/render.js';
-import { planFrames } from '../plans/floors.js';
+import { planFrames, solo } from '../plans/floors.js';
 import { renderAuto } from '../panels/deteccion.js';
 import { ensurePdf } from '../plans/load.js';
 import { DB } from '../core/storage.js';
@@ -29,7 +29,7 @@ export function apT(m, x, y) { return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y +
 
 /* Lee los trazos y rellenos del PDF. Es lento en planos grandes (segundos), por eso el
    resultado se guarda en el navegador y la próxima vez se abre al instante. */
-const VEC_V = 2;
+const VEC_V = 3; // 3: guarda la transparencia de los rellenos
 function vecKey(fileId, page) { return `vec:${fileId}#${page || 1}#v${VEC_V}`; }
 
 export async function extractVec(pdf, pageNo) {
@@ -37,7 +37,7 @@ export async function extractVec(pdf, pageNo) {
   const VT = pg.getViewport({scale:PDF_UNIT}).transform;
   const ol = await pg.getOperatorList();
   const O = pdfjsLib.OPS, fn = ol.fnArray, ar = ol.argsArray;
-  let st = {ctm:[1,0,0,1,0,0], fill:'#000000', stroke:'#000000', lw:1};
+  let st = {ctm:[1,0,0,1,0,0], fill:'#000000', stroke:'#000000', lw:1, ca:1};
   const stack = [], shapes = [];
   let path = [];
   const FILL = new Set([O.fill, O.eoFill, O.fillStroke, O.eoFillStroke, O.closeFillStroke, O.closeEOFillStroke]);
@@ -51,7 +51,9 @@ export async function extractVec(pdf, pageNo) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const s of sp) for (let i = 0; i < s.length; i += 2) { const x = s[i], y = s[i+1]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     const wr = kind === 's' ? Math.round(w*10)/10 : 0;
-    shapes.push({k:kind, c:color, w:wr, sp, cv:curved, eo: !!eo, bb:[x0, y0, x1, y1]});
+    const sh = {k:kind, c:color, w:wr, sp, cv:curved, eo: !!eo, bb:[x0, y0, x1, y1]};
+    if (kind === 'f' && st.ca < 0.95) sh.a = st.ca; // relleno semitransparente: deja ver lo de abajo
+    shapes.push(sh);
   };
   const paint = f => {
     if (FILL.has(f)) pushShape('f', st.fill, 0, EO.has(f));
@@ -66,6 +68,7 @@ export async function extractVec(pdf, pageNo) {
     else if (f === O.paintFormXObjectBegin) { stack.push({...st, ctm:st.ctm.slice()}); if (a && a[0] && a[0].length === 6) st.ctm = mulT(st.ctm, a[0]); }
     else if (f === O.paintFormXObjectEnd) { if (stack.length) st = stack.pop(); }
     else if (f === O.setLineWidth) st.lw = a[0];
+    else if (f === O.setGState) { for (const kv of (a && a[0]) || []) if (kv && kv[0] === 'ca' && typeof kv[1] === 'number') st.ca = kv[1]; }
     else if (f === O.setFillRGBColor) st.fill = colorArgs(a);
     else if (f === O.setStrokeRGBColor) st.stroke = colorArgs(a);
     else if (f === O.setFillColorN) st.fill = null;
@@ -114,13 +117,14 @@ function buildVec(shapes, page) {
   });
   return {page, shapes, byKey, ev:new Map()};
 }
+function dropOldVec(fileId, page) { for (let v = 1; v < VEC_V; v++) DB.delPrefix(`vec:${fileId}#${page || 1}#v${v}`).catch(() => {}); }
 export function hasVec(fileId, page) { return DB.has(vecKey(fileId, page)); }
 /* Guarda en segundo plano la lectura vectorial de un archivo que todavía no la tiene. */
 export async function prepareVec(fileId, page, pdf) {
   const key = vecKey(fileId, page);
   if (await DB.has(key)) return false;
   const shapes = await extractVec(pdf, page);
-  await DB.put(key, {shapes});
+  await DB.put(key, {shapes}); dropOldVec(fileId, page);
   return true;
 }
 
@@ -136,7 +140,7 @@ export async function ensureVec(k) {
     let shapes = rec && rec.shapes;
     if (!shapes) {
       shapes = await extractVec(await ensurePdf(rt), page);
-      if (fileId) DB.put(vecKey(fileId, page), {shapes});
+      if (fileId) { DB.put(vecKey(fileId, page), {shapes}); dropOldVec(fileId, page); }
     }
     rt.vec = buildVec(shapes, page);
     for (const [id, v] of pathCache) if (v.plan === k) pathCache.delete(id);
@@ -241,7 +245,7 @@ export function visibleEvents(vec, rules, fx) {
   }
   const U = bbs.reduce((u, b) => [Math.min(u[0], b[0]), Math.min(u[1], b[1]), Math.max(u[2], b[2]), Math.max(u[3], b[3])], [Infinity, Infinity, -Infinity, -Infinity]);
   const over = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-  const ev = []; let started = false, count = 0;
+  const ev = [], cover = []; let started = false, count = 0;
   for (const s of vec.shapes) {
     const r = byKey.get(s.key);
     if (r) {
@@ -249,12 +253,21 @@ export function visibleEvents(vec, rules, fx) {
       if (excl && excl.has(s.i)) continue;
       ev.push([s, r]); started = true; count++; continue;
     }
-    if (!started || s.k !== 'f' || !over(s.bb, U)) continue;
-    if (bbs.some(b => over(s.bb, b))) ev.push([s, null]);
+    if (!started || s.k !== 'f' || s.a !== undefined || !over(s.bb, U)) continue;
+    if (!bbs.some(b => over(s.bb, b))) continue;
+    // puntos, etiquetas y otros símbolos dibujados encima de la pared no la cortan: la pared sigue corrida debajo
+    if (isSymbol(s)) cover.push(s); else ev.push([s, null]);
   }
-  ev.count = count; ev.bb = U;
+  ev.count = count; ev.bb = U; ev.cover = cover;
   vec.ev.set(sig, ev);
   return ev;
+}
+/* Repinta en la copia del plano, con el color de la pared, los símbolos que la tapan (puntos, rombos de
+   etiqueta), para que la comprobación de color no corte la pared en esos lugares. */
+export function paintCover(g, ev, color) {
+  if (!ev.cover || !ev.cover.length || !color) return;
+  g.fillStyle = g.strokeStyle = color; g.lineWidth = 1;
+  for (const s of ev.cover) { tracePath(g, s); g.fill(s.eo ? 'evenodd' : 'nonzero'); g.stroke(); }
 }
 function tracePath(g, s) {
   g.beginPath();
@@ -319,11 +332,12 @@ export function maskByPlan(data, plan, W, H, colors) {
 }
 /* Igual que maskByPlan, pero comparando contra el plano a su resolución completa (rt.bmp), para que
    las paredes delgadas no se pierdan al reducir la imagen. data: resaltado W×H (escala W/bmp.width). */
-export function maskByPlanFull(data, W, H, bmp, colors) {
+export function maskByPlanFull(data, W, H, bmp, colors, cover) {
   if (!colors.length) return;
   const BW = bmp.width, BH = bmp.height, k = W/BW;
   const t = document.createElement('canvas'); t.width = BW; t.height = BH;
   const tg = t.getContext('2d', {willReadFrequently:true}); tg.drawImage(bmp, 0, 0);
+  if (cover) { tg.save(); tg.setTransform(cover.sc, 0, 0, cover.sc, 0, 0); paintCover(tg, cover.ev, colors[0]); tg.restore(); }
   const rgb = colors.map(c => { const n = parseInt(String(c).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
   const T2 = 80*80, ok = new Uint8Array(W*H);
   const STRIP = 256;
@@ -368,11 +382,37 @@ export function overlayCanvas(k, rules, maxPx) {
   if (cols.length && rt.bmp) {
     try {
       const g2 = c.getContext('2d', {willReadFrequently:true}), O = g2.getImageData(0, 0, c.width, c.height);
-      maskByPlanFull(O.data, c.width, c.height, rt.bmp, cols);
+      maskByPlanFull(O.data, c.width, c.height, rt.bmp, cols, {ev, sc: rt.bmp.width/p.w});
       g2.putImageData(O, 0, 0);
     } catch (e) { console.warn(e); }
   }
-  return {c, sc};
+  const ko = fire.size && rt.bmp ? knockout(c, rt.bmp, [...fire].map(r => r.kind === 'f' ? r.key.slice(1, 8) : r.color).filter(Boolean)) : null;
+  return {c, sc, ko};
+}
+/* "Borrador" de las paredes cortafuego: blanco donde el plano muestra el color de la pared bajo el resaltado.
+   Se pinta justo después del plano A (antes del B), así el rojo encima se ve siempre igual, sin mezclarse
+   con el color propio de la pared, y las líneas negras, puntos, textos y el plano B siguen viéndose. */
+function knockout(c, bmp, colors) {
+  if (!colors.length) return null;
+  try {
+    const W = c.width, H = c.height;
+    const t = document.createElement('canvas'); t.width = W; t.height = H;
+    const tg = t.getContext('2d', {willReadFrequently:true}); tg.imageSmoothingQuality = 'high'; tg.drawImage(bmp, 0, 0, W, H);
+    const P = tg.getImageData(0, 0, W, H), pd = P.data, O = c.getContext('2d', {willReadFrequently:true}).getImageData(0, 0, W, H).data;
+    const fr = parseInt(FIRE_HL.slice(1, 3), 16), fg = parseInt(FIRE_HL.slice(3, 5), 16), fb = parseInt(FIRE_HL.slice(5, 7), 16);
+    const rgb = colors.map(col => { const n = parseInt(String(col).slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; });
+    const T2 = 120*120;
+    for (let i = 0; i < pd.length; i += 4) {
+      let on = false;
+      if (O[i+3] > 40 && Math.abs(O[i] - fr) < 30 && Math.abs(O[i+1] - fg) < 30 && Math.abs(O[i+2] - fb) < 30) {
+        const r = pd[i], g = pd[i+1], b = pd[i+2];
+        for (const q of rgb) { const dr = r - q[0], dg = g - q[1], db = b - q[2]; if (dr*dr + dg*dg + db*db < T2) { on = true; break; } }
+      }
+      if (on) { pd[i] = pd[i+1] = pd[i+2] = 255; pd[i+3] = 255; } else pd[i+3] = 0;
+    }
+    tg.putImageData(P, 0, 0);
+    return t;
+  } catch (e) { console.warn(e); return null; }
 }
 
 export const hlOverlay = {A:null, B:null};
@@ -386,7 +426,7 @@ export function overlayFor(k) {
   const o = rt.hl;
   if (o && o.sig === sig && o.vec === rt.vec) return o;
   const oc = overlayCanvas(k, rules, isMobile ? 3000 : 4096);
-  return (rt.hl = {sig, vec:rt.vec, c:oc.c, sc:oc.sc});
+  return (rt.hl = {sig, vec:rt.vec, c:oc.c, sc:oc.sc, ko:oc.ko});
 }
 
 export function drawAutoHighlights() {
@@ -398,13 +438,19 @@ export function drawAutoHighlights() {
     const p = S.plans[k];
     for (const [fr, clip] of planFrames(k)) {
       ctx.save(); setWorld(fr);
-      ctx.globalAlpha = k === 'A' ? 0.5 : 0.8;
+      ctx.globalAlpha = k === 'A' ? (o.ko ? 0.78 : 0.5) : 0.8;
       blitPart(o.c, p, fr, clip);
       ctx.restore();
     }
   }
 }
 
+/* se llama desde drawPlan, justo después de pintar el plano A */
+export function drawKnockout(k, p, fr, clip) {
+  if (k !== 'A' || !S.auto.show || solo) return;
+  const o = RT.A.vec ? overlayFor('A') : null; if (!o || !o.ko) return;
+  ctx.save(); ctx.globalAlpha = p.opacity ?? 1; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();
+}
 export function needVecInBackground() {
   for (const [r] of autoRules()) {
     const rt = RT[r.plan];

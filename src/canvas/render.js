@@ -5,7 +5,7 @@ import { dist, M, rectPts, toWorld, w2s } from '../core/geometry.js';
 import { drawTable } from './tables.js';
 import { locOf } from '../core/levels.js';
 import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
-import { drawAutoHighlights } from '../detect/vector.js';
+import { drawAutoHighlights, drawKnockout } from '../detect/vector.js';
 import { wallFixMasks } from '../detect/wallfix.js';
 import { drawLevelRects } from '../plans/arqlevels.js';
 import { drawDetail, scheduleDetail } from './detail.js';
@@ -136,6 +136,7 @@ export function drawPlan(k) {
     ctx.globalCompositeOperation = p.blend === 'multiply' || src === rt.tinted ? 'multiply' : 'source-over';
     blitPart(src, p, fr, clip);
     drawDetail(k, p, fr, clip, src === rt.tinted);
+    if (!solo && p.visible) drawKnockout(k, p, fr, clip);
     ctx.restore();
   }
 }

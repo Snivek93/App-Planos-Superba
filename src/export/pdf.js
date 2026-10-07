@@ -166,6 +166,8 @@ export async function exportPDFVector(k, withOther, opt) {
     const oc = overlayCanvas(hk, hlRules.filter(([r]) => r.plan === hk), 6000); if (!oc) continue;
     const png = await new Promise(res => oc.c.toBlob(res, 'image/png'));
     hlImgs[hk] = page.node.newXObject('Resaltado', (await doc.embedPng(await png.arrayBuffer())).ref);
+    // en la lámina del arquitectónico, la pared se aclara debajo del rojo para que no se mezcle con su color
+    if (hk === 'A' && k === 'A' && oc.ko) { const kp = await new Promise(res => oc.ko.toBlob(res, 'image/png')); hlImgs.ko = page.node.newXObject('Aclarado', (await doc.embedPng(await kp.arrayBuffer())).ref); }
   }
   g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...base));
   // el otro plano de fondo, también vectorial si es PDF
@@ -200,6 +202,11 @@ export async function exportPDFVector(k, withOther, opt) {
         for (const f of S.floors) ctx.rect(f.b[0], f.b[1], f.b[2]-f.b[0], f.b[3]-f.b[1]);
         ctx.clip('evenodd');
       }
+      if (hlImgs.ko) {
+        const hp = S.plans.A; ctx.save(); setWorld(hp); g._gs(1);
+        g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hlImgs.ko), P.popGraphicsState());
+        ctx.restore();
+      }
       if (otherDraw && !(pc.rest && S.floors.length)) for (const [ofr, oclip] of planFrames(other)) {
         ctx.save(); setWorld(ofr);
         if (oclip) { ctx.beginPath(); ctx.rect(oclip[0], oclip[1], oclip[2]-oclip[0], oclip[3]-oclip[1]); ctx.clip(); }
@@ -208,13 +215,13 @@ export async function exportPDFVector(k, withOther, opt) {
         ctx.restore();
       }
       // paredes y tuberías detectadas: la misma capa de resaltado que se ve en pantalla
-      if (!pc.rest || !S.floors.length) for (const hk of Object.keys(hlImgs)) {
+      if (!pc.rest || !S.floors.length) for (const hk of Object.keys(hlImgs).filter(x => x !== 'ko')) {
         const hi = hlImgs[hk], hp = S.plans[hk];
         const frames = hk === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[hp, null]];
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          g._gs(hk === 'A' ? 0.55 : 0.85);
+          g._gs(hk === 'A' ? (hlImgs.ko ? 0.78 : 0.55) : 0.85);
           g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hi), P.popGraphicsState());
           ctx.restore();
         }
@@ -280,6 +287,8 @@ export async function exportPDF(k, withOther, opt = {}) {
     renderVars.ctx = c.getContext('2d'); renderVars.VM = inv.map(v => v*sc); renderVars.UI = (sealMM/2/0.3528)*pxPerPt/13; renderVars.EXPORT = true;
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(rt.bmp, 0, 0, p.w, p.h); ctx.restore();
+    const ocA = k === 'A' && hlRules.some(([r, f]) => f && r.plan === 'A') ? overlayCanvas('A', hlRules.filter(([r]) => r.plan === 'A'), 6000) : null;
+    if (ocA && ocA.ko) { ctx.save(); ctx.setTransform(sc, 0, 0, sc, 0, 0); ctx.drawImage(ocA.ko, 0, 0, p.w, p.h); ctx.restore(); }
     const other = k === 'A' ? 'B' : 'A', po = S.plans[other];
     const invS = fr => { const q = M(fr), dt = q[0]*q[3] - q[1]*q[2]; return [q[3]/dt, -q[1]/dt, -q[2]/dt, q[0]/dt, (q[2]*q[5] - q[3]*q[4])/dt, (q[1]*q[4] - q[0]*q[5])/dt].map(v => v*sc); };
     // piezas: con plantas, cada planta del plano B tiene su propia transformación
@@ -305,7 +314,7 @@ export async function exportPDF(k, withOther, opt = {}) {
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          ctx.globalAlpha = hk === 'A' ? 0.55 : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
+          ctx.globalAlpha = hk === 'A' ? (ocA && ocA.ko ? 0.78 : 0.55) : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
           ctx.restore();
         }
       }
