@@ -6,7 +6,7 @@ import { save } from '../core/storage.js';
 import { closePanel } from '../ui/app.js';
 import { closeSheet } from './sheets.js';
 import { renderProject } from '../home/home.js';
-import { aLevelObjs, levelViewOptions, viewLevel } from '../plans/arqlevels.js';
+import { aLevelObjs, levelViewOptions, moreLevelObjs, viewLevel } from '../plans/arqlevels.js';
 import { compactSealNumbers } from '../panels/sellos.js';
 
 /* ---------- arranque ---------- */
@@ -122,10 +122,15 @@ export function hydrate(o) {
 
 /* " › Nivel 6, Nivel 7" cuando el plano usa solo algunos niveles del arquitectónico */
 export function aLevelsLabel(sh) {
-  const arq = P.sheets[sh.aSheet], ids = sh.aLevels || [];
-  if (!arq || !ids.length) return '';
-  const names = aLevelObjs(sh).map(l => l.name);
-  return names.length ? ' › ' + names.join(', ') : '';
+  const arq = P.sheets[sh.aSheet]; if (!arq) return '';
+  const names = (sh.aLevels || []).length ? aLevelObjs(sh).map(l => l.name) : [];
+  let out = names.length ? ' › ' + names.join(', ') : '';
+  for (const m of sh.aMore || []) {
+    const o = P.sheets[m.aSheet]; if (!o) continue;
+    const n = moreLevelObjs({aMore:[m], aSheet: sh.aSheet}).map(l => l.id === '*' ? 'hoja completa' : l.name);
+    out += ` + ${o.name}${n.length ? ' › ' + n.join(', ') : ''}`;
+  }
+  return out;
 }
 
 export function curSheet() { return P && P.active ? P.sheets[P.active] || null : null; }

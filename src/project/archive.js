@@ -10,6 +10,7 @@ import { zipStore } from '../export/firestop.js';
 import { arqState, blankState, clone, guessType, hydrate, modelVars, newProjectData, normState, pid, RT_BLANK, showHome, stripExt } from './model.js';
 import { rtCache, storeFile, usedFiles } from './files.js';
 import { commitShared, isSharedLayer } from './shared.js';
+import { clearExtras } from '../plans/extraA.js';
 import { openSheet } from './sheets.js';
 
 /* --- guardar / abrir el proyecto como .zip --- */
@@ -93,7 +94,7 @@ export async function openProject(file) {
     toast('Abriendo el proyecto…');
     commitShared(); P.active = null;
     await DB.clearAll(); rtCache.clear();
-    stateVars.S = blankState(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
+    stateVars.S = blankState(); clearExtras(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
     if (o.sheets) {
       for (const [name, data] of entries || []) if (name.startsWith('archivos/')) {
         const id = name.slice(9), m = (o.files || {})[id] || {};
@@ -116,7 +117,7 @@ export async function newProject() {
   const ok = await ask({title:'Nuevo proyecto', body:'Se borran del navegador todos los planos, marcas y sellos del proyecto actual. Si lo quiere conservar, descárguelo antes.', buttons:[{label:'Cancelar', value:false}, {label:'Empezar de cero', value:true, danger:true}]});
   if (!ok) return;
   P.active = null; await DB.clearAll(); rtCache.clear();
-  stateVars.P = newProjectData(); stateVars.S = blankState(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
+  stateVars.P = newProjectData(); stateVars.S = blankState(); clearExtras(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
   stateVars.undoStack = []; stateVars.redoStack = []; sel.clear(); stateVars.cur = null; stateVars.align = null;
   await persistNow(); renderAll(); setTool('select'); showHome(); dirty();
 }

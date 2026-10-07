@@ -8,6 +8,7 @@ import { save } from '../core/storage.js';
 import { ask, toast } from '../ui/app.js';
 import { floorAtWorld, planFrames } from '../plans/floors.js';
 import { apT, ensureVec, fireAlpha, mulT, overlayCanvas } from '../detect/vector.js';
+import { aKeys, extraFireRules, extraKeys, isAKey } from '../plans/extraA.js';
 import { ensurePdf } from '../plans/load.js';
 
 /* ---------- PDF vectorial: las marcas se escriben como líneas y texto del PDF, no como imagen ---------- */
@@ -141,7 +142,7 @@ export function invM(q) { const dt = q[0]*q[3] - q[1]*q[2]; return [q[3]/dt, -q[
 
 export async function exportPDFVector(k, withOther, opt) {
   const P = PDFLib, p = S.plans[k], rt = RT[k];
-  const hlRules = [...(opt.fire ? S.auto.fire.filter(r => r.on).map(r => [r, true]) : []), ...(opt.pipes ? S.auto.pipes.filter(r => r.on).map(r => [r, false]) : [])];
+  const hlRules = [...(opt.fire ? S.auto.fire.filter(r => r.on).map(r => [r, true]) : []), ...(opt.fire ? extraKeys.flatMap(x => extraFireRules(x).filter(r => r.on).map(r => [r, true])) : []), ...(opt.pipes ? S.auto.pipes.filter(r => r.on).map(r => [r, false]) : [])];
   for (const kk of new Set(hlRules.map(([r]) => r.plan))) { try { await ensureVec(kk); } catch (e) {} }
   const doc = await P.PDFDocument.create();
   let page, base, unitPerPt;
@@ -171,20 +172,23 @@ export async function exportPDFVector(k, withOther, opt) {
   }
   g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...base));
   // el otro plano de fondo, también vectorial si es PDF
-  const other = k === 'A' ? 'B' : 'A', po = S.plans[other], ro = RT[other];
-  let otherDraw = null;
-  if (withOther && ro.bmp) {
+  const other = k === 'A' ? 'B' : 'A', po = S.plans[other];
+  // el plano A puede venir de varias láminas (niveles de otros arquitectónicos): una por clave
+  const otherDraws = [];
+  for (const ok of (other === 'A' ? aKeys() : [other])) {
+    const ro = RT[ok], pk = S.plans[ok];
+    if (!withOther || !ro || !ro.bmp) continue;
     if (ro.isPdf && await ensurePdf(ro)) {
       const srcO = await P.PDFDocument.load(await ro.file.arrayBuffer(), {ignoreEncryption:true});
-      const pjo = await ro.pdf.getPage(po.page), v = pjo.view;
-      const emb = await doc.embedPage(srcO.getPage(po.page - 1), {left:v[0], bottom:v[1], right:v[2], top:v[3]});
+      const pjo = await ro.pdf.getPage(pk.page), v = pjo.view;
+      const emb = await doc.embedPage(srcO.getPage(pk.page - 1), {left:v[0], bottom:v[1], right:v[2], top:v[3]});
       const name = page.node.newXObject('Plano', emb.ref);
       const inner = mulT(pjo.getViewport({scale:PDF_UNIT}).transform, [1, 0, 0, 1, v[0], v[1]]);
-      otherDraw = {name, inner};
+      otherDraws.push({k:ok, name, inner});
     } else {
       const jpg = await new Promise(res => ro.bmp.toBlob(res, 'image/jpeg', 0.9));
       const img = await doc.embedJpg(await jpg.arrayBuffer());
-      otherDraw = {name: page.node.newXObject('Imagen', img.ref), inner:[po.w, 0, 0, -po.h, 0, po.h]};
+      otherDraws.push({k:ok, name: page.node.newXObject('Imagen', img.ref), inner:[pk.w, 0, 0, -pk.h, 0, pk.h]});
     }
   }
   const saved = [ctx, VM, UI, EXPORT];
@@ -192,7 +196,8 @@ export async function exportPDFVector(k, withOther, opt) {
     renderVars.ctx = g; renderVars.EXPORT = true;
     const sealMM = (opt.size ?? S.pdfSealMM ?? 4);
     renderVars.UI = (sealMM/2/0.3528)*unitPerPt/13;
-    const pieces = (k === 'B' && S.floors.length) ? [{fr:p, clip:null, rest:true}, ...S.floors.map(f => ({fr:f.t, clip:f.b, f}))] : [{fr:p, clip:null}];
+    // el plano B va completo; los niveles del A van debajo, cada uno en su lugar (planFrames)
+    const pieces = [{fr:p, clip:null}];
     for (const pc of pieces) {
       renderVars.VM = invM(M(pc.fr));
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -207,21 +212,21 @@ export async function exportPDFVector(k, withOther, opt) {
         g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hlImgs.ko), P.popGraphicsState());
         ctx.restore();
       }
-      if (otherDraw && !(pc.rest && S.floors.length)) for (const [ofr, oclip] of planFrames(other)) {
+      if (!(pc.rest && S.floors.length)) for (const od of otherDraws) for (const [ofr, oclip] of planFrames(od.k)) {
         ctx.save(); setWorld(ofr);
         if (oclip) { ctx.beginPath(); ctx.rect(oclip[0], oclip[1], oclip[2]-oclip[0], oclip[3]-oclip[1]); ctx.clip(); }
         ctx.globalCompositeOperation = 'multiply'; g._gs(po.opacity);
-        g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, otherDraw.inner)), P.drawObject(otherDraw.name), P.popGraphicsState());
+        g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, od.inner)), P.drawObject(od.name), P.popGraphicsState());
         ctx.restore();
       }
       // paredes y tuberías detectadas: la misma capa de resaltado que se ve en pantalla
       if (!pc.rest || !S.floors.length) for (const hk of Object.keys(hlImgs).filter(x => x !== 'ko')) {
         const hi = hlImgs[hk], hp = S.plans[hk];
-        const frames = hk === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[hp, null]];
+        const frames = isAKey(hk) && k === 'B' ? planFrames(hk) : [[hp, null]];
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          g._gs(hk === 'A' ? fireAlpha(!!hlImgs.ko).red : 0.85);
+          g._gs(isAKey(hk) ? fireAlpha(!!hlImgs.ko).red : 0.85);
           g.ops.push(P.pushGraphicsState(), P.concatTransformationMatrix(...mulT(g.st.m, [hp.w, 0, 0, -hp.h, 0, hp.h])), P.drawObject(hi), P.popGraphicsState());
           ctx.restore();
         }
@@ -273,7 +278,7 @@ export async function exportPDF(k, withOther, opt = {}) {
     catch (err) { console.error(err); toast('No se pudo generar el PDF vectorial; se genera como imagen.'); }
   }
   toast('Generando el PDF…');
-  const hlRules = [...(opt.fire ? S.auto.fire.filter(r => r.on).map(r => [r, true]) : []), ...(opt.pipes ? S.auto.pipes.filter(r => r.on).map(r => [r, false]) : [])];
+  const hlRules = [...(opt.fire ? S.auto.fire.filter(r => r.on).map(r => [r, true]) : []), ...(opt.fire ? extraKeys.flatMap(x => extraFireRules(x).filter(r => r.on).map(r => [r, true])) : []), ...(opt.pipes ? S.auto.pipes.filter(r => r.on).map(r => [r, false]) : [])];
   for (const kk of new Set(hlRules.map(([r]) => r.plan))) { try { await ensureVec(kk); } catch (e) {} }
   await new Promise(r => setTimeout(r, 60));
   const W = rt.bmp.width, H = rt.bmp.height, sc = W/p.w, m = M(p);
@@ -292,29 +297,31 @@ export async function exportPDF(k, withOther, opt = {}) {
     const other = k === 'A' ? 'B' : 'A', po = S.plans[other];
     const invS = fr => { const q = M(fr), dt = q[0]*q[3] - q[1]*q[2]; return [q[3]/dt, -q[1]/dt, -q[2]/dt, q[0]/dt, (q[2]*q[5] - q[3]*q[4])/dt, (q[1]*q[4] - q[0]*q[5])/dt].map(v => v*sc); };
     // piezas: con plantas, cada planta del plano B tiene su propia transformación
-    const pieces = (k === 'B' && S.floors.length) ? [{fr:p, clip:null, rest:true}, ...S.floors.map(f => ({fr:f.t, clip:f.b, f}))] : [{fr:p, clip:null}];
+    // el plano B va completo; los niveles del A van debajo, cada uno en su lugar (planFrames)
+    const pieces = [{fr:p, clip:null}];
     for (const pc of pieces) {
       renderVars.VM = invS(pc.fr);
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (pc.clip) { ctx.beginPath(); ctx.rect(pc.clip[0]*sc, pc.clip[1]*sc, (pc.clip[2]-pc.clip[0])*sc, (pc.clip[3]-pc.clip[1])*sc); ctx.clip(); }
       else if (pc.rest) { ctx.beginPath(); ctx.rect(0, 0, W, H); for (const f of S.floors) ctx.rect(f.b[0]*sc, f.b[1]*sc, (f.b[2]-f.b[0])*sc, (f.b[3]-f.b[1])*sc); ctx.clip('evenodd'); }
-      if (withOther && RT[other].bmp && !(pc.rest && S.floors.length)) {
-        const src = po.tint && RT[other].tinted ? RT[other].tinted : RT[other].bmp;
-        for (const [ofr, oclip] of planFrames(other)) {
+      if (withOther && !(pc.rest && S.floors.length)) for (const ok of (other === 'A' ? aKeys() : [other])) {
+        const ro = RT[ok], pk = S.plans[ok]; if (!ro || !ro.bmp) continue;
+        const src = po.tint && ro.tinted ? ro.tinted : ro.bmp;
+        for (const [ofr, oclip] of planFrames(ok)) {
           ctx.save(); setWorld(ofr);
           if (oclip) { ctx.beginPath(); ctx.rect(oclip[0], oclip[1], oclip[2]-oclip[0], oclip[3]-oclip[1]); ctx.clip(); }
-          ctx.globalAlpha = po.opacity; ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(src, 0, 0, po.w, po.h); ctx.restore();
+          ctx.globalAlpha = po.opacity; ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(src, 0, 0, pk.w, pk.h); ctx.restore();
         }
       }
       // paredes y tuberías detectadas automáticamente
       if (!pc.rest || !S.floors.length) for (const hk of new Set(hlRules.map(([r]) => r.plan))) {
         const oc = overlayCanvas(hk, hlRules.filter(([r]) => r.plan === hk), 6000); if (!oc) continue;
         const hp = S.plans[hk];
-        const frames = hk === 'B' && S.floors.length ? (pc.f ? [[pc.f.t, pc.f.b]] : S.floors.map(f => [f.t, f.b])) : [[hp, null]];
+        const frames = isAKey(hk) && k === 'B' ? planFrames(hk) : [[hp, null]];
         for (const [fr, clip] of frames) {
           ctx.save(); setWorld(fr);
           if (clip) { ctx.beginPath(); ctx.rect(clip[0], clip[1], clip[2]-clip[0], clip[3]-clip[1]); ctx.clip(); }
-          ctx.globalAlpha = hk === 'A' ? fireAlpha(!!(ocA && ocA.ko)).red : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
+          ctx.globalAlpha = isAKey(hk) ? fireAlpha(!!(ocA && ocA.ko)).red : 0.85; ctx.drawImage(oc.c, 0, 0, hp.w, hp.h);
           ctx.restore();
         }
       }

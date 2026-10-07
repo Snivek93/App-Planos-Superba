@@ -7,6 +7,7 @@ import { renderAuto } from '../panels/deteccion.js';
 import { ensurePdf } from '../plans/load.js';
 import { DB } from '../core/storage.js';
 import { detectLintels } from './lintels.js';
+import { extraEdits, extraFireRules, extraKeys, isAKey, lookOf, planKeys } from '../plans/extraA.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
@@ -230,7 +231,7 @@ export const isDot = isSymbol;
 /* Ajustes manuales de las paredes (herramienta "Afinar paredes"): elementos quitados y zonas borradas.
    Se guardan por archivo y página del plano A, porque los números de forma dependen del PDF. */
 export function fireEdits(k = 'A') {
-  if (k !== 'A') return null;
+  if (k !== 'A') return isAKey(k) ? extraEdits(k) : null;
   const fx = S.auto.fx, src = RT.A.fileId ? RT.A.fileId + '#' + (S.plans.A.page || 1) : null;
   if (!fx || !src || fx.src !== src) return null;
   return fx;
@@ -306,7 +307,7 @@ export function paintEvents(g, ev, colorOf, minW, fx) {
 export function ruleCache(rule) {
   const rt = RT[rule.plan];
   if (!rt.vec) return null;
-  const fx = rule.plan === 'A' ? fireEdits('A') : null;
+  const fx = isAKey(rule.plan) ? fireEdits(rule.plan) : null;
   const sig = editsSig(fx) + '|' + (rule.noDots !== false);
   let c = pathCache.get(rule.id);
   if (c && c.vec === rt.vec && c.sig === sig) return c;
@@ -316,7 +317,9 @@ export function ruleCache(rule) {
   return c;
 }
 
-export function autoRules() { return [...S.auto.fire.map(r => [r, true]), ...S.auto.pipes.map(r => [r, false])]; }
+export function autoRules() {
+  return [...S.auto.fire.map(r => [r, true]), ...extraKeys.flatMap(k => extraFireRules(k).map(r => [r, true])), ...S.auto.pipes.map(r => [r, false])];
+}
 
 /* Comprobación final contra el plano dibujado: solo queda resaltado donde el plano realmente muestra
    el color de la pared. Corrige lo que la lectura vectorial no puede saber: partes recortadas por el PDF,
@@ -416,7 +419,7 @@ export function overlayCanvas(k, rules, maxPx) {
       g2.putImageData(O, 0, 0);
     } catch (e) { console.warn(e); }
   }
-  if (fire.size && k === 'A') {
+  if (fire.size && isAKey(k)) {
     try {
       const sig = lintSig(rules.map(([r]) => r), fx);
       if (!rt.lint || rt.lint.sig !== sig || rt.lint.vec !== rt.vec) {
@@ -425,7 +428,7 @@ export function overlayCanvas(k, rules, maxPx) {
         setTimeout(renderAuto, 0);
       }
       g.setTransform(sc, 0, 0, sc, 0, 0); g.globalCompositeOperation = 'source-over';
-      paintExtras(g, fireExtras(), FIRE_HL, FIRE_HL);
+      paintExtras(g, fireExtras(k), FIRE_HL, FIRE_HL);
     } catch (e) { console.warn(e); }
   }
   const ko = fire.size && rt.bmp ? knockout(c, rt.bmp, [...fire].map(r => r.kind === 'f' ? r.key.slice(1, 8) : r.color).filter(Boolean)) : null;
@@ -464,8 +467,8 @@ function lintSig(rules, fx) { return rules.map(r => r.id + ':' + r.key + ':' + (
 const inMask = (fx, p) => fx && fx.masks.some(m => p[0] >= m[0] && p[0] <= m[2] && p[1] >= m[1] && p[1] <= m[3]);
 /* Lo que se suma a las paredes del plano A, en coordenadas del plano A:
    lint: cargadores encontrados (sin los quitados a mano ni los que caen en una zona borrada); adds: trazos a mano. */
-export function fireExtras() {
-  const rt = RT.A, fx = fireEdits('A');
+export function fireExtras(k = 'A') {
+  const rt = RT[k] || {}, fx = fireEdits(k);
   const off = (fx && fx.noLint) || [];
   const lint = S.auto.lintels === false || !rt.lint ? [] : rt.lint.list.filter(l => {
     const mid = [(l.a[0] + l.b[0])/2, (l.a[1] + l.b[1])/2], G = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]);
@@ -483,7 +486,7 @@ export function paintExtras(g, ex, cLint, cAdd) {
   for (const a of ex.adds) { if (a.pts.length < 2) continue; g.lineWidth = a.w; g.beginPath(); a.pts.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.stroke(); }
 }
 /* asegura que los cargadores del plano A estén calculados (se calculan junto con el resaltado) */
-export function ensureLintels() { if (RT.A.vec && S.auto.fire.some(r => r.on)) overlayFor('A'); return fireExtras(); }
+export function ensureLintels(k = 'A') { if (RT[k] && RT[k].vec && (k === 'A' ? S.auto.fire : extraFireRules(k)).some(r => r.on)) overlayFor(k); return fireExtras(k); }
 
 export function overlayFor(k) {
   const rt = RT[k], p = S.plans[k];
@@ -500,13 +503,13 @@ export function overlayFor(k) {
 export function drawAutoHighlights() {
   if (!S.auto.show) return;
   S.auto.pipes.forEach((r, i) => r.hl = PIPE_HL[i % PIPE_HL.length]);
-  for (const k of ['A', 'B']) {
-    if (!RT[k].bmp || !S.plans[k].visible) continue;
+  for (const k of planKeys()) {
+    if (!RT[k] || !RT[k].bmp || !lookOf(k).visible) continue;
     const o = overlayFor(k); if (!o) continue;
     const p = S.plans[k];
     for (const [fr, clip] of planFrames(k)) {
       ctx.save(); setWorld(fr);
-      ctx.globalAlpha = k === 'A' ? fireAlpha(!!o.ko).red : 0.8;
+      ctx.globalAlpha = isAKey(k) ? fireAlpha(!!o.ko).red : 0.8;
       if (!ctx.globalAlpha) { ctx.restore(); continue; }
       blitPart(o.c, p, fr, clip);
       ctx.restore();
@@ -516,10 +519,10 @@ export function drawAutoHighlights() {
 
 /* se llama desde drawPlan, justo después de pintar el plano A */
 export function drawKnockout(k, p, fr, clip) {
-  if (k !== 'A' || !S.auto.show || solo) return;
-  const o = RT.A.vec ? overlayFor('A') : null; if (!o || !o.ko) return;
+  if (!isAKey(k) || !S.auto.show || solo) return;
+  const o = RT[k] && RT[k].vec ? overlayFor(k) : null; if (!o || !o.ko) return;
   const ka = fireAlpha(true).ko; if (!ka) return;
-  ctx.save(); ctx.globalAlpha = (p.opacity ?? 1)*ka; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();
+  ctx.save(); ctx.globalAlpha = (lookOf(k).opacity ?? 1)*ka; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();
 }
 export function needVecInBackground() {
   for (const [r] of autoRules()) {

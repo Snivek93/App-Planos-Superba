@@ -129,7 +129,8 @@ export function renderOpts() {
   } else if (tool === 'eraser') {
     h = `<span class="hint">Toque o arrastre sobre las marcas que quiera borrar.</span>`;
   } else if (tool === 'moveB') {
-    h = `<span class="hint">Arrastre para mover el plano B. Rotación y escala están en la pestaña Planos.</span><button class="btn" data-o="alignStart">Alinear con 2 puntos</button>`;
+    h = S.floors.length ? `<span class="hint">Con plantas el plano B queda fijo: arrastre dentro de una planta para mover su nivel del arquitectónico hasta que calce.</span>`
+      : `<span class="hint">Arrastre para mover el plano B. Rotación y escala están en la pestaña Planos.</span><button class="btn" data-o="alignStart">Alinear con 2 puntos</button>`;
   }
   o.innerHTML = h;
 }

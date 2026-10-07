@@ -7,6 +7,7 @@ import { DB, persistNow } from './core/storage.js';
 import { renderAll } from './ui/app.js';
 import { blankState, hydrate, newProjectData, RT_BLANK, showHome } from './project/model.js';
 import { openSheet } from './project/sheets.js';
+import { clearExtras } from './plans/extraA.js';
 import { migrateLegacy } from './project/archive.js';
 
 /* Se ejecuta una vez al arrancar, en el orden original (ver main.js). */
@@ -23,7 +24,7 @@ export function init() {
         if (raw) { await migrateLegacy(JSON.parse(raw), await DB.get('A'), await DB.get('B')); await persistNow(); }
       } catch (e) { console.warn(e); }
     }
-    stateVars.S = blankState(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
+    stateVars.S = blankState(); clearExtras(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
     renderAll(); setTool('select'); resize();
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     if (P.active && P.sheets[P.active]) await openSheet(P.active); else showHome();

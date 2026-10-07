@@ -8,9 +8,10 @@ import { toLocal } from '../core/geometry.js';
 import { CH, CW, ctx, dirty, dpr, EXPORT, interacting } from './render.js';
 import { planFrames, solo } from '../plans/floors.js';
 import { ensurePdf } from '../plans/load.js';
+import { lookOf, planKeys } from '../plans/extraA.js';
 
-const det = {A:null, B:null};          // detalle listo por plano
-const task = {A:null, B:null};         // dibujo en curso (se cancela si la vista cambia)
+const det = {};                        // detalle listo por plano (A, B y los A adicionales)
+const task = {};                       // dibujo en curso (se cancela si la vista cambia)
 let timer = null, seq = 0;
 const CAP = isMobile ? 6e6 : 12e6;     // píxeles máximos del detalle (memoria)
 
@@ -19,7 +20,7 @@ const native = (rt, p) => rt.bmp ? rt.bmp.width/p.w : 0;
 /* zona visible del plano k (coordenadas del plano) y escala necesaria (píxeles de pantalla por unidad) */
 function need(k) {
   const p = S.plans[k], rt = RT[k];
-  if (!rt.bmp || !rt.isPdf || !p.visible || (solo && solo !== k)) return null;
+  if (!p || !rt || !rt.bmp || !rt.isPdf || !lookOf(k).visible || (solo && solo !== k)) return null;
   let rect = null, scale = 0;
   for (const [fr, clip] of planFrames(k)) {
     const q = [[0, 0], [CW, 0], [CW, CH], [0, CH]].map(([sx, sy]) => toLocal(fr, [(sx - view.x)/view.z, (sy - view.y)/view.z]));
@@ -45,7 +46,8 @@ export function scheduleDetail() {
 
 function check() {
   if (interacting()) { scheduleDetail(); return; }
-  for (const k of ['A', 'B']) {
+  for (const k of Object.keys(det)) if (!planKeys().includes(k)) { if (det[k]) det[k].c.width = det[k].c.height = 0; delete det[k]; }
+  for (const k of planKeys()) {
     const n = need(k), rt = RT[k], p = S.plans[k];
     if (!n) { if (det[k]) { det[k].c.width = det[k].c.height = 0; det[k] = null; } continue; } // con poco zoom se libera la memoria
     const d = det[k];
@@ -106,4 +108,4 @@ export function drawDetail(k, p, fr, clip, tinted) {
   ctx.restore();
 }
 
-export function clearDetail() { for (const k of ['A', 'B']) { if (task[k]) { try { task[k].cancel(); } catch (e) {} } task[k] = null; det[k] = null; } }
+export function clearDetail() { for (const k of new Set([...Object.keys(task), ...Object.keys(det)])) { if (task[k]) { try { task[k].cancel(); } catch (e) {} } task[k] = null; det[k] = null; } }

@@ -7,7 +7,7 @@ import { esc, PDF_UNIT } from '../core/constants.js';
 import { P, RT, S, uid } from '../core/state.js';
 import { toLocal, toWorld } from '../core/geometry.js';
 import { dirty } from '../canvas/render.js';
-import { fitRect } from './floors.js';
+import { centerAt, fitRect } from './floors.js';
 import { ensureText, floorsVars } from './floors.js';
 import { parseLevels, joinY } from '../core/levels.js';
 import { save } from '../core/storage.js';
@@ -17,6 +17,7 @@ import { setTool } from '../editor/tools.js';
 import { renderPlans } from '../panels/planos.js';
 import { ICON } from '../ui/icons.js';
 import { curSheet, sheetsOf } from '../project/model.js';
+import { akOf, keyOfSheet } from './extraA.js';
 
 export function lvlsOf(arqSheet) { return (arqSheet && arqSheet.state.lvls) || []; }
 const lvlRectWorld = l => { const A = S.plans.A, q = [[l.a[0], l.a[1]], [l.a[2], l.a[3]]].map(v => toWorld(A, v)); return [Math.min(q[0][0], q[1][0]), Math.min(q[0][1], q[1][1]), Math.max(q[0][0], q[1][0]), Math.max(q[0][1], q[1][1])]; };
@@ -127,6 +128,10 @@ export function drawLevelRects(ctx, w2s) {
 export function regionLevels(l) { const lv = parseLevels(l.levels || ''); return lv.filter(x => /\d/.test(x)); }
 const lvName = lv => `${lv.length === 1 ? 'Nivel' : 'Niveles'} ${joinY(lv)}`;
 export function resolveEntry(arq, entry) {
+  if (entry === '*') { // la hoja completa como una planta (cuando se combina con niveles de otra lámina)
+    const a = arq && arq.state.plans.A; if (!a || !a.w) return null;
+    return {id:'*', region:'*', name: arq.name, levels:'', a:[0, 0, a.w, a.h]};
+  }
   const [id, sub] = String(entry).split('@'), l = lvlsOf(arq).find(x => x.id === id);
   if (!l) return null;
   if (!sub) return {...l, region:l.id};
@@ -137,7 +142,7 @@ export function resolveEntry(arq, entry) {
 }
 /* agrupa la selección: un recuadro completo, o los niveles sueltos de cada recuadro en una sola entrada */
 export function normEntries(arq, entries) {
-  const by = new Map();
+  const by = new Map(), star = (entries || []).includes('*');
   for (const e of entries || []) {
     const [id, sub] = String(e).split('@'); const l = lvlsOf(arq).find(x => x.id === id); if (!l) continue;
     const cur = by.get(id) || {all:false, lv:new Set()};
@@ -150,6 +155,7 @@ export function normEntries(arq, entries) {
     const all = regionLevels(l), lv = all.filter(x => c.lv.has(x));
     out.push(c.all || !all.length || lv.length === all.length ? l.id : `${l.id}@${lv.join(',')}`);
   }
+  if (star) out.push('*');
   return out;
 }
 
@@ -157,6 +163,16 @@ export function normEntries(arq, entries) {
 export function aLevelObjs(sh) {
   const arq = P.sheets[sh.aSheet];
   return (sh.aLevels || []).map(e => resolveEntry(arq, e)).filter(Boolean);
+}
+/* niveles elegidos de otras láminas de arquitectónicos (cada uno con su lámina de origen en asheet) */
+export function moreLevelObjs(sh) {
+  const out = [];
+  for (const m of sh.aMore || []) {
+    const arq = P.sheets[m.aSheet]; if (!arq || m.aSheet === sh.aSheet) continue;
+    const ent = (m.aLevels && m.aLevels.length) ? m.aLevels : ['*'];
+    for (const e of ent) { const l = resolveEntry(arq, e); if (l) out.push({...l, asheet: m.aSheet, sheetName: arq.name}); }
+  }
+  return out;
 }
 /* Opciones "hoja completa", "hoja › recuadro" y "hoja › nivel suelto" para elegir el plano A en una lista. */
 export function arqLevelOptions(selA, selLv) {
@@ -220,32 +236,54 @@ export function levelViewOptions() {
 }
 
 function floorFromLevel(st, l) {
-  const A = st.plans.A, B = st.plans.B;
+  const B = st.plans.B;
+  if (l.asheet) return floorFromOther(st, l);
+  const A = st.plans.A;
   const q = [[l.a[0], l.a[1]], [l.a[2], l.a[1]], [l.a[2], l.a[3]], [l.a[0], l.a[3]]].map(v => toLocal(B, toWorld(A, v)));
   const b = [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))];
-  return {id:'f' + uid(), src:l.id, name:l.name, levels:l.levels, a:l.a.slice(), b, t:{x:B.x, y:B.y, s:B.s, r:B.r}, how:'nivel',
+  return {id:'f' + uid(), src:l.id, name:l.name, levels:l.levels, a:l.a.slice(), b, at:{x:A.x, y:A.y, s:A.s, r:A.r || 0}, how:'nivel', pending:true,
     info:'Del arquitectónico, ubicada según la alineación general. Si no calza, use "Alinear por ejes" o "2 puntos".'};
+}
+/* Nivel de otra lámina: en el plano B se ubica en la parte que no ocupan las otras plantas
+   (lo usual es que la lámina mecánica traiga los niveles lado a lado); después se alinea por ejes. */
+function floorFromOther(st, l) {
+  const B = st.plans.B;
+  const others = st.floors.filter(f => f.b), W = B.w || 1, H = B.h || 1;
+  let b = [0, 0, W, H];
+  if (others.length) {
+    const x0 = Math.min(...others.map(f => f.b[0])), x1 = Math.max(...others.map(f => f.b[2]));
+    const left = x0, right = W - x1;
+    if (Math.max(left, right) > W*0.2) b = right >= left ? [x1, 0, W, H] : [0, 0, x0, H];
+  }
+  // el nivel se pone con su centro sobre el centro de esa zona del B, con la escala general del A
+  const at = centerAt(st.plans.A, l.a, b);
+  return {id:'f' + uid(), src:l.id, asheet:l.asheet, name:l.name, levels:l.levels, a:l.a.slice(), b, at, how:'sin', pending:true,
+    info:`Nivel de ${l.sheetName || 'otra lámina'}. Se intenta alinear por ejes; si no calza, use "Alinear por ejes" o "2 puntos".`};
 }
 /* Ajusta plantas, recorte del plano A y niveles según los niveles elegidos del arquitectónico. */
 export function syncLevelFloors(sh) {
   const st = sh.state, arq = P.sheets[sh.aSheet];
   if (!arq || sh.kind !== 'pair') return false;
-  const lv = aLevelObjs(sh);
+  const more = moreLevelObjs(sh);
+  let lv = aLevelObjs(sh);
   if ((sh.aLevels || []).length !== lv.length) sh.aLevels = lv.map(l => l.id);
   const ne = normEntries(arq, sh.aLevels); if (ne.join('|') !== (sh.aLevels || []).join('|')) { sh.aLevels = ne; return syncLevelFloors(sh); }
+  if (more.length) { if (!lv.length) lv = [resolveEntry(arq, '*')].filter(Boolean); lv = lv.concat(more); }
+  const same = (f, l) => f.src === l.id && (f.asheet || null) === (l.asheet || null);
   let ch = false;
-  if (lv.length >= 2 && !st.plans.B.fileId) {
+  if (lv.length >= 1 && !st.plans.B.fileId) {
     // sin plano B no hay plantas: se crean al cargar el plano B
-    st.aClip = null; const n = st.floors.length; st.floors = st.floors.filter(f => !f.src); return st.floors.length !== n;
+    st.aClip = lv.length === 1 && !lv[0].asheet ? lv[0].a.slice() : null; const n = st.floors.length; st.floors = st.floors.filter(f => !f.src); return st.floors.length !== n;
   }
-  if (lv.length >= 2) {
+  if (lv.length >= 1) { // cada nivel es una planta: el B completo y el nivel del A debajo de su zona
     st.aClip = null;
+    if (lv.length === 1 && (!st.levels || st.levelsAuto)) { st.levels = lv[0].levels; st.levelsAuto = true; }
+    const n = st.floors.length; st.floors = st.floors.filter(f => !f.src || lv.some(l => same(f, l))); if (st.floors.length !== n) ch = true;
     for (const l of lv) {
-      const f = st.floors.find(f => f.src === l.id);
+      const f = st.floors.find(f => same(f, l));
       if (!f) { st.floors.push(floorFromLevel(st, l)); ch = true; }
       else { f.a = l.a.slice(); f.name = l.name; f.levels = l.levels; }
     }
-    const n = st.floors.length; st.floors = st.floors.filter(f => !f.src || lv.some(l => l.id === f.src)); if (st.floors.length !== n) ch = true;
   } else {
     const n = st.floors.length; st.floors = st.floors.filter(f => !f.src); if (st.floors.length !== n) ch = true;
     if (lv.length === 1) { st.aClip = lv[0].a.slice(); if (!st.levels || st.levelsAuto) { st.levels = lv[0].levels; st.levelsAuto = true; } }
@@ -254,12 +292,54 @@ export function syncLevelFloors(sh) {
   return ch;
 }
 /* recortes del plano A en el plano abierto: un nivel, o las plantas que vienen del arquitectónico */
-export function aClips() {
+export function aClips(k = 'A') {
   const sh = curSheet(); if (!sh) return null;
-  if (sh.kind === 'arq') { const v = viewLevelObj(); return v ? [v.a] : null; }
+  if (sh.kind === 'arq') { const v = viewLevelObj(); return k === 'A' && v ? [v.a] : null; }
   if (sh.kind !== 'pair') return null;
-  if (S.aClip) return [S.aClip];
-  const fs = S.floors.filter(f => f.src);
+  if (k === 'A' && S.aClip) return [S.aClip];
+  const fs = S.floors.filter(f => f.src && akOf(f) === k);
+  if (k !== 'A') return fs.map(f => f.a); // un plano A adicional solo muestra sus niveles
   return fs.length ? fs.map(f => f.a) : null;
 }
 export { PDF_UNIT };
+
+/* --- selector del plano A: un arquitectónico principal y, si hace falta, niveles de otras láminas ---
+   sel = {a, lv, more:[{aSheet, aLevels}]}. Se usa al crear un plano de instalaciones y en "Cambiar". */
+function aRowHtml(aid, lv, first) {
+  const arq = P.sheets[aid], L = lvlsOf(arq);
+  const opts = sheetsOf('arq').map(a => `<option value="${a.id}"${a.id === aid ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  const checks = L.length ? `<div class="checks" data-lv>${levelChecksHtml(arq, lv)}</div>`
+    : `<p class="muted small" data-lv style="margin:4px 0 0">Esta hoja no tiene niveles definidos: se usa completa.</p>`;
+  return `<div class="apick" data-row><div class="apick-h"><select data-asel aria-label="Arquitectónico">${opts}</select>${first ? '' : `<button type="button" class="icon" data-arm title="Quitar esta lámina">${ICON.trash}</button>`}</div>${checks}</div>`;
+}
+export function aPickerHtml(sel) {
+  const rows = [aRowHtml(sel.a, sel.lv || [], true), ...(sel.more || []).filter(m => P.sheets[m.aSheet]).map(m => aRowHtml(m.aSheet, m.aLevels || [], false))];
+  return `<div class="apicker">${rows.join('')}<button type="button" class="btn" data-aadd>+ Nivel de otra lámina de arquitectónicos</button>
+    <p class="muted small" style="margin:0">Sin marcar niveles se usa la hoja completa. Con varios niveles se crea una planta por nivel. Si un nivel está en otra lámina (por ejemplo el 5 en A-49 y el 6 en A-50), agréguela aquí.</p></div>`;
+}
+export function wireAPicker(root) {
+  const box = root.querySelector('.apicker'); if (!box) return;
+  box.querySelectorAll('[data-lv]').forEach(wireLevelChecks);
+  box.addEventListener('change', e => {
+    const s = e.target.closest('[data-asel]'); if (!s) return;
+    const row = s.closest('[data-row]'), first = row === box.querySelector('[data-row]');
+    const tmp = document.createElement('div'); tmp.innerHTML = aRowHtml(s.value, [], first);
+    const nr = tmp.firstElementChild; row.replaceWith(nr); nr.querySelectorAll('[data-lv]').forEach(wireLevelChecks);
+  });
+  box.addEventListener('click', e => {
+    if (e.target.closest('[data-arm]')) { e.target.closest('[data-row]').remove(); return; }
+    if (e.target.closest('[data-aadd]')) {
+      const used = new Set([...box.querySelectorAll('[data-asel]')].map(s => s.value));
+      const next = sheetsOf('arq').find(a => !used.has(a.id)); if (!next) return toast('Ya están todas las láminas de arquitectónicos.');
+      const tmp = document.createElement('div'); tmp.innerHTML = aRowHtml(next.id, [], false);
+      const nr = tmp.firstElementChild; e.target.closest('[data-aadd]').before(nr); nr.querySelectorAll('[data-lv]').forEach(wireLevelChecks);
+    }
+  });
+}
+export function readAPicker(root) {
+  const rows = [...root.querySelectorAll('.apicker [data-row]')];
+  const read = row => { const a = row.querySelector('[data-asel]').value, c = row.querySelector('.checks[data-lv]'); return {a, lv: c ? normEntries(P.sheets[a], readLevelChecks(c)) : []}; };
+  const main = read(rows[0]), seen = new Set([main.a]), more = [];
+  for (const row of rows.slice(1)) { const r = read(row); if (seen.has(r.a)) continue; seen.add(r.a); more.push({aSheet: r.a, aLevels: r.lv}); }
+  return {a: main.a, lv: main.lv, more};
+}

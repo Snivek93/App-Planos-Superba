@@ -5,7 +5,8 @@ import { RT, S, view } from '../core/state.js';
 import { clampZ, s2w, toWorld } from '../core/geometry.js';
 import { CH, cv, CW, dirty, renderVars } from './render.js';
 import { pos } from '../editor/pointer.js';
-import { aClips } from '../plans/arqlevels.js';
+import { aKeys, lookOf } from '../plans/extraA.js';
+import { planFrames } from '../plans/floors.js';
 
 /* ---------- vista ---------- */
 export function zoomAt(p, z) { z = clampZ(z); const w = s2w(...p); view.z = z; view.x = p[0] - w[0]*z; view.y = p[1] - w[1]*z; dirty(); }
@@ -13,9 +14,13 @@ export function zoomAt(p, z) { z = clampZ(z); const w = s2w(...p); view.z = z; v
 export let wheelTimer = null;
 
 export function fit() {
-  const pts = [], cl = aClips();
-  if (cl && RT.A.bmp) for (const c of cl) for (const q of [[c[0], c[1]], [c[2], c[1]], [c[2], c[3]], [c[0], c[3]]]) pts.push(toWorld(S.plans.A, q));
-  else for (const k of ['A', 'B']) { const p = S.plans[k]; if (RT[k].bmp && p.visible) for (const q of [[0,0],[p.w,0],[p.w,p.h],[0,p.h]]) pts.push(toWorld(p, q)); }
+  // lo que se ve: el plano B completo y el A (completo, su nivel o sus niveles)
+  const pts = [];
+  for (const k of [...aKeys(), 'B']) {
+    const p = S.plans[k], rt = RT[k];
+    if (!p || !rt || !rt.bmp || !lookOf(k).visible) continue;
+    for (const [fr, clip] of planFrames(k)) { const c = clip || [0, 0, p.w, p.h]; for (const q of [[c[0], c[1]], [c[2], c[1]], [c[2], c[3]], [c[0], c[3]]]) pts.push(toWorld(fr, q)); }
+  }
   if (!pts.length) { view.x = 0; view.y = 0; view.z = 1; dirty(); return; }
   const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);

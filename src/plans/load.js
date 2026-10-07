@@ -199,7 +199,7 @@ export async function removePlan(k) {
   if (nf) {
     // las plantas son recortes del plano B: sin plano B no tienen sentido
     pushUndo();
-    for (const m of S.marks) if (m.fl) { const f = S.floors.find(x => x.id === m.fl); if (f) reanchor(m, f.t, S.plans.B); m.fl = null; }
+    for (const m of S.marks) if (m.fl) m.fl = null;
     S.floors = []; floorsVars.solo = null;
   }
   RT[k] = RT_BLANK();

@@ -8,6 +8,8 @@ import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
 import { drawAutoHighlights, drawKnockout, FIRE_HL, typicalWallW } from '../detect/vector.js';
 import { wallFixLintels, wallFixMasks, wallFixPreview, wfDraft, wfMode } from '../detect/wallfix.js';
 import { drawLevelRects } from '../plans/arqlevels.js';
+import { isAKey, lookOf, planKeys } from '../plans/extraA.js';
+import { makeTint } from '../plans/load.js';
 import { drawDetail, scheduleDetail } from './detail.js';
 
 /* ---------- lienzo ---------- */
@@ -51,7 +53,7 @@ export function draw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, cv.width, cv.height);
   VM = [dpr*view.z, 0, 0, dpr*view.z, dpr*view.x, dpr*view.y]; UI = dpr;
-  for (const k of ['A', 'B']) drawPlan(k);
+  for (const k of planKeys()) drawPlan(k);
   scheduleDetail();
   if (!solo) drawAutoHighlights();
   const seals = solo ? [] : drawLayers(true);
@@ -145,15 +147,18 @@ export function drawLayers(useSel, keep) {
 
 export function drawPlan(k) {
   const p = S.plans[k], rt = RT[k];
-  if (!rt.bmp || (!p.visible && solo !== k) || (solo && solo !== k)) return;
-  const src = p.tint && rt.tinted && !solo ? rt.tinted : rt.bmp;
+  if (!p || !rt || !rt.bmp) return;
+  const look = lookOf(k); // los planos A adicionales se ven igual que el principal
+  if (k !== 'A' && isAKey(k) && p.tint !== look.tint) { p.tint = look.tint; makeTint(k); }
+  if ((!look.visible && solo !== k) || (solo && solo !== k)) return;
+  const src = look.tint && rt.tinted && !solo ? rt.tinted : rt.bmp;
   for (const [fr, clip] of planFrames(k)) {
     ctx.save(); setWorld(fr);
-    ctx.globalAlpha = solo ? 1 : p.opacity;
-    ctx.globalCompositeOperation = p.blend === 'multiply' || src === rt.tinted ? 'multiply' : 'source-over';
+    ctx.globalAlpha = solo ? 1 : look.opacity;
+    ctx.globalCompositeOperation = look.blend === 'multiply' || src === rt.tinted ? 'multiply' : 'source-over';
     blitPart(src, p, fr, clip);
     drawDetail(k, p, fr, clip, src === rt.tinted);
-    if (!solo && p.visible) drawKnockout(k, p, fr, clip);
+    if (!solo && look.visible) drawKnockout(k, p, fr, clip);
     ctx.restore();
   }
 }

@@ -6,7 +6,7 @@ import { dirty } from '../canvas/render.js';
 import { renderOpts, setTool } from '../editor/tools.js';
 import { save } from '../core/storage.js';
 import { ask, toast } from '../ui/app.js';
-import { floorAtWorld } from '../plans/floors.js';
+import { aFrameAt } from '../plans/floors.js';
 import { ensureVec, isDot, ruleCache } from './vector.js';
 import { renderAuto } from '../panels/deteccion.js';
 
@@ -25,8 +25,13 @@ export async function pickAt(w) {
   let vec;
   try { toast('Leyendo el PDF…'); vec = await ensureVec(k); }
   catch (err) { toast(err.message); setTool('select'); return; }
-  const fl = k === 'B' && S.floors.length ? floorAtWorld(w) : null;
-  const p = fl ? fl.t : S.plans[k], lp = toLocal(p, w), tol = 9/(view.z*p.s);
+  let p = S.plans[k];
+  if (k === 'A' && S.floors.length) {
+    const af = aFrameAt(w);
+    if (af.k !== 'A') { toast('Ese nivel viene de otra lámina: sus paredes se eligen en ese arquitectónico.'); return; }
+    p = af.fr;
+  }
+  const lp = toLocal(p, w), tol = 9/(view.z*p.s);
   const hits = [];
   for (let i = vec.shapes.length - 1; i >= 0; i--) {
     const s = vec.shapes[i], t = tol + (s.w || 0)/2;

@@ -5,7 +5,8 @@ import { baseW, dist, M, toLocal, toWorld } from '../core/geometry.js';
 import { placeSeal } from '../editor/pointer.js';
 import { pushUndo } from '../core/undo.js';
 import { changed, renderTop, toast } from '../ui/app.js';
-import { floorRectWorld, frameOf } from '../plans/floors.js';
+import { atOf, floorRectWorld, frameOf } from '../plans/floors.js';
+import { extraFireRules, akOf } from '../plans/extraA.js';
 import { ensureLabels, ensureLintels, ensureVec, fillColors, fireEdits, maskByPlan, paintCover, paintEvents, paintExtras, ruleCache, visibleEvents } from './vector.js';
 import { RT } from '../core/state.js';
 import { renderAuto } from '../panels/deteccion.js';
@@ -43,11 +44,13 @@ export function paintRules(g, rules, colorOf, res, ox, oy, minPx, fr, clip) {
 const LINT_V = 240, ADD_V = 252, LINT_I = Math.round(LINT_V/12) - 1, ADD_I = Math.round(ADD_V/12) - 1;
 export async function runAuto() {
   const fr = S.auto.fire.filter(r => r.on), pr = S.auto.pipes.filter(r => r.on);
-  if (!fr.length) return toast('Primero elija al menos un tipo de pared cortafuego en el plano A.');
+  const frOf = k => k === 'A' ? fr : extraFireRules(k).filter(r => r.on);
+  const akeys = S.floors.length ? [...new Set(S.floors.map(akOf))] : ['A'];
+  if (!akeys.some(k => frOf(k).length)) return toast('Primero elija al menos un tipo de pared cortafuego en el plano A.');
   if (!pr.length) return toast('Primero elija al menos un tipo de tubería en el plano B.');
   toast('Buscando cruces…');
   try {
-    for (const k of new Set([...fr, ...pr].map(r => r.plan))) await ensureVec(k);
+    for (const k of new Set([...akeys.filter(k => frOf(k).length), ...pr.map(r => r.plan)])) await ensureVec(k);
   } catch (err) { return toast(err.message); }
   await new Promise(r => setTimeout(r, 30));
   // trabajos: una búsqueda por planta, o una sola para toda la lámina
@@ -55,7 +58,8 @@ export async function runAuto() {
   if (S.floors.length) {
     for (const f of S.floors) {
       const rw = floorRectWorld(f);
-      jobs.push({floor:f, reg:rw, frames:{A:[S.plans.A, f.a], B:[f.t, f.b]}});
+      const ak = akOf(f);
+      jobs.push({floor:f, ak, reg:rw, frames:{A:[atOf(f), f.a], B:[S.plans.B, f.b]}});
     }
   } else {
     const bbs = fr.map(ruleWorldBB).filter(Boolean), pbs = pr.map(ruleWorldBB).filter(Boolean);
@@ -64,13 +68,16 @@ export async function runAuto() {
     reg = [Math.max(reg[0], Math.min(...pbs.map(b => b[0]))), Math.max(reg[1], Math.min(...pbs.map(b => b[1]))), Math.min(reg[2], Math.max(...pbs.map(b => b[2]))), Math.min(reg[3], Math.max(...pbs.map(b => b[3])))];
     if (S.auto.zone) { const z = S.auto.zone; reg = [Math.max(reg[0], z[0]), Math.max(reg[1], z[1]), Math.min(reg[2], z[2]), Math.min(reg[3], z[3])]; }
     if (S.aClip) { const c = S.aClip, A = S.plans.A, q = [[c[0], c[1]], [c[2], c[3]]].map(v => toWorld(A, v)); reg = [Math.max(reg[0], Math.min(q[0][0], q[1][0])), Math.max(reg[1], Math.min(q[0][1], q[1][1])), Math.min(reg[2], Math.max(q[0][0], q[1][0])), Math.min(reg[3], Math.max(q[0][1], q[1][1]))]; }
-    jobs.push({floor:null, reg, frames:{A:[S.plans.A, null], B:[S.plans.B, null]}});
+    jobs.push({floor:null, ak:'A', reg, frames:{A:[S.plans.A, null], B:[S.plans.B, null]}});
   }
   const labelsBy = {};
   if (S.auto.diam) for (const r of pr) { try { labelsBy[r.plan] = labelsBy[r.plan] || await ensureLabels(r.plan); } catch (e) { labelsBy[r.plan] = []; } }
-  const extras = ensureLintels();
   const found = [];
   for (const job of jobs) {
+    // cada planta usa las paredes de su arquitectónico (el principal o el de otra lámina)
+    const ak = job.ak, frJ = frOf(ak), rtA = RT[ak];
+    if (!frJ.length || !rtA || !rtA.vec) continue;
+    const extras = ensureLintels(ak);
     const pad = 10, reg = [job.reg[0]-pad, job.reg[1]-pad, job.reg[2]+pad, job.reg[3]+pad];
     const rw = reg[2]-reg[0], rh = reg[3]-reg[1];
     if (rw <= 0 || rh <= 0) continue;
@@ -78,16 +85,16 @@ export async function runAuto() {
     const W = Math.max(1, Math.ceil(rw*res)), H = Math.max(1, Math.ceil(rh*res));
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c.getContext('2d', {willReadFrequently:true}); };
     const gf = mk();
-    { const [f0, c0] = job.frames.A; paintRules(gf, fr, r => `rgb(${(fr.indexOf(r) + 1)*12},0,0)`, res, reg[0], reg[1], 1, f0, c0); }
+    { const [f0, c0] = job.frames.A; paintRules(gf, frJ, r => `rgb(${(frJ.indexOf(r) + 1)*12},0,0)`, res, reg[0], reg[1], 1, f0, c0); }
     const F = gf.getImageData(0, 0, W, H).data;
-    if (RT.A.bmp) {
+    if (rtA.bmp) {
       // misma comprobación que el resaltado: solo cuenta lo que en el plano A se ve del color de la pared
       const gb = mk(), A = job.frames.A[0], mA = M(A), clipA = job.frames.A[1];
       gb.setTransform(res, 0, 0, res, -reg[0]*res, -reg[1]*res); gb.transform(mA[0], mA[1], mA[2], mA[3], mA[4], mA[5]);
       if (clipA) { gb.beginPath(); gb.rect(clipA[0], clipA[1], clipA[2]-clipA[0], clipA[3]-clipA[1]); gb.clip(); }
-      gb.drawImage(RT.A.bmp, 0, 0, A.w, A.h);
-      const cols = fillColors(fr);
-      if (RT.A.vec) paintCover(gb, visibleEvents(RT.A.vec, fr, fireEdits('A')), cols[0]);
+      gb.drawImage(rtA.bmp, 0, 0, A.w, A.h);
+      const cols = fillColors(frJ);
+      paintCover(gb, visibleEvents(rtA.vec, frJ, fireEdits(ak)), cols[0]);
       maskByPlan(F, gb.getImageData(0, 0, W, H).data, W, H, cols);
     }
     // cargadores sobre puertas y paredes agregadas a mano: también son pared cortafuego
@@ -123,7 +130,7 @@ export async function runAuto() {
         }
         if (cnt < 2) continue;
         const fi = +Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
-        const wall = fi === LINT_I ? {name:'Cargador sobre puerta'} : fi === ADD_I ? {name:'Pared agregada a mano'} : fr[Math.max(0, Math.min(fr.length - 1, fi))];
+        const wall = fi === LINT_I ? {name:'Cargador sobre puerta'} : fi === ADD_I ? {name:'Pared agregada a mano'} : frJ[Math.max(0, Math.min(frJ.length - 1, fi))];
         found.push({r, job, x: reg[0] + (sx/cnt + .5)/res, y: reg[1] + (sy/cnt + .5)/res, ext: Math.max(x1 - x0, y1 - y0)/res, wall});
       }
     });

@@ -34,7 +34,7 @@ function addTile(act, label) { return `<li class="taddli"><button class="tadd" d
 export function itemHtml(sh, T) {
   const t = T[sh.id], last = P.last === sh.id, grid = (P.layout || 'grid') === 'grid';
   let meta, q = '';
-  if (sh.kind === 'arq') { const users = Object.values(P.sheets).filter(s => s.aSheet === sh.id).length; const nl = (sh.state.lvls || []).length; meta = [nl ? `${nl} ${nl === 1 ? 'nivel' : 'niveles'}` : '', t.walls ? 'Paredes marcadas' : 'Sin paredes marcadas', `en ${users} ${users === 1 ? 'plano' : 'planos'}`].filter(Boolean).join(' · '); }
+  if (sh.kind === 'arq') { const users = Object.values(P.sheets).filter(s => s.aSheet === sh.id || (s.aMore || []).some(m => m.aSheet === sh.id)).length; const nl = (sh.state.lvls || []).length; meta = [nl ? `${nl} ${nl === 1 ? 'nivel' : 'niveles'}` : '', t.walls ? 'Paredes marcadas' : 'Sin paredes marcadas', `en ${users} ${users === 1 ? 'plano' : 'planos'}`].filter(Boolean).join(' · '); }
   else {
     const a = P.sheets[sh.aSheet], st = sh.state, below = st.below || st.floors.some(f => f.below);
     const lv = st.floors.length ? `${st.floors.length} ${st.floors.length === 1 ? 'planta' : 'plantas'}` : (st.levels ? `Nivel ${st.levels}` : '');
