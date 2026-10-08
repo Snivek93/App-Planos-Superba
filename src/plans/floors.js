@@ -10,7 +10,7 @@ import { fit } from '../canvas/view.js';
 import { pushUndo } from '../core/undo.js';
 import { renderPlans } from '../panels/planos.js';
 import { ask, changed, closePanel, toast } from '../ui/app.js';
-import { defaultLevels, floorMult, parseLevels } from '../core/levels.js';
+import { defaultLevels, floorLocHint, floorMult, parseLevels } from '../core/levels.js';
 import { apT, ensureVec, undouble } from '../detect/vector.js';
 import { ensurePdf } from './load.js';
 import { aClips } from './arqlevels.js';
@@ -337,6 +337,7 @@ export function floorsHtml() {
     ${S.floors.length ? `<ul class="floors">${S.floors.map(f => `<li data-floor="${f.id}">
       <div class="frow"><input data-act="fname" value="${esc(f.name)}" aria-label="Nombre de la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}>${st(f)}</div>
       <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"${f.src ? ` title="En este plano puede indicar más niveles que el del arquitectónico (planta típica). Vacío: vuelve a ${esc(f.lvArq ?? f.levels ?? '')}."` : ''}><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
+      ${floorLocHint(f) ? `<div class="small" style="color:var(--tinta-2);margin-top:4px">${esc(floorLocHint(f))}</div>` : ''}
       ${f.src && f.lvOwn ? `<div class="small muted">En el arquitectónico es ${esc(f.lvArq || '')}; deje vacío para volver a ese.</div>` : ''}
       <label class="chk small" style="margin:6px 0 0"><input type="checkbox" data-act="fbelow"${(f.below ?? S.below) ? ' checked' : ''}> Tuberías bajo losa (paredes en el nivel inferior)</label>
       ${f.info ? `<div class="small muted">${esc(f.info)}</div>` : ''}

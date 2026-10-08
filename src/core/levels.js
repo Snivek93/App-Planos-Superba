@@ -1,6 +1,6 @@
 /* Niveles, plantas típicas (multiplicador), pared/losa y tuberías bajo losa. */
 import { esc, ST } from './constants.js';
-import { S } from './state.js';
+import { P, S } from './state.js';
 import { sealFloor } from '../canvas/tables.js';
 import { sealsSorted } from '../panels/sellos.js';
 import { baseName, saveFile } from '../export/files.js';
@@ -74,9 +74,38 @@ export function sealLevels(m) {
   const f = S.floors.length ? sealFloor(m) : null;
   let lv = f ? floorLevels(f) : (S.floors.length ? [] : parseLevels(S.levels || ''));
   if (!lv.length) lv = [S.floors.length ? 'Fuera de las plantas' : ''];
-  const below = !!(f ? (f.below ?? S.below) : S.below) && locOf(m) === 'pared';
-  if (below) lv = lv.map(x => /^-?\d+$/.test(x) ? String(+x - 1) : (x ? x + ' (inferior)' : x));
+  const bp = !!(f ? (f.below ?? S.below) : S.below), below = bp && locOf(m) === 'pared';
+  if (bp) {
+    // tuberías bajo losa: las paredes que cruzan son del nivel inferior y la losa es la del nivel del plano B.
+    // Si la planta viene de un nivel del arquitectónico, sus niveles son los de las paredes (el nivel del A):
+    // las losas van un nivel arriba. Si no, sus niveles son los del plano B: las paredes van un nivel abajo.
+    if (f ? f.src : S.levelsAuto) { if (locOf(m) === 'losa') lv = lv.map(x => shiftLv(x, 1)); }
+    else if (below) lv = lv.map(x => shiftLv(x, -1));
+  }
   return {lv, f, below};
+}
+function shiftLv(x, d) {
+  if (!/^-?\d+$/.test(x)) return x ? x + (d < 0 ? ' (inferior)' : ' (superior)') : x;
+  let v = +x + d;
+  if (v === 0 && !hasLevel0()) v += d; // de sótano -1 se pasa al nivel 1 (no hay nivel 0)
+  return String(v);
+}
+/* ¿el proyecto usa un nivel 0? (si no, el nivel de arriba del -1 es el 1) */
+function hasLevel0() {
+  if (!P || !P.sheets) return false;
+  for (const sh of Object.values(P.sheets)) {
+    const st = sh.state;
+    for (const l of st.lvls || []) if (parseLevels(l.levels || '').includes('0')) return true;
+    for (const f of st.floors || []) if (parseLevels(f.levels || '').includes('0')) return true;
+    if (parseLevels(st.levels || '').includes('0')) return true;
+  }
+  return false;
+}
+/* para mostrar en la planta: a qué niveles van los sellos de pared y de losa */
+export function floorLocHint(f) {
+  if (!(f.below ?? S.below)) return '';
+  const lv = floorLevels(f), up = f.src ? lv.map(x => shiftLv(x, 1)) : lv, wall = f.src ? lv : lv.map(x => shiftLv(x, -1));
+  return `Tubería bajo losa: sellos de pared en ${wall.length > 1 ? 'niveles' : 'nivel'} ${joinY(wall)} · sellos de losa en ${up.length > 1 ? 'niveles' : 'nivel'} ${joinY(up)}.`;
 }
 
 export function levelsHtml() {
@@ -84,5 +113,5 @@ export function levelsHtml() {
     ${S.floors.length ? '<p class="help" style="margin:0 0 8px">Hay plantas definidas: los niveles se indican en cada planta, más abajo.</p>' :
       `<div class="field" style="grid-template-columns:86px 1fr"><label>Nivel(es)</label><input data-act="plevels" value="${esc(S.levels || '')}" placeholder="Ej.: 5, o 7-10 si es planta típica"></div>${S.levelsAuto ? '<p class="help" style="margin:-4px 0 8px">Tomado del nivel elegido en el arquitectónico.</p>' : ''}`}
     <label class="chk"><input type="checkbox" data-act="pbelow"${S.below ? ' checked' : ''}> Tuberías bajo losa: las paredes que cruzan son del nivel inferior (típico en sanitario y pluvial)</label>
-    <p class="help" style="margin:4px 0 0">Con esta opción, en las tablas y en la exportación los sellos en pared van al nivel de abajo y los de losa quedan en el nivel del plano.</p></section>`;
+    <p class="help" style="margin:4px 0 0">Con esta opción, los sellos de pared van al nivel de las paredes (el de abajo) y los de losa al nivel del plano. Si las plantas vienen de niveles del arquitectónico, esos niveles son los de las paredes y las losas van un nivel arriba.</p></section>`;
 }
