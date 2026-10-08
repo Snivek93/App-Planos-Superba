@@ -242,13 +242,28 @@ function editsSig(fx) { return fx ? fx.src + ':' + fx.excl.length + ':' + fx.mas
    se dibuja otro relleno encima (columna, otra pared, un parche blanco), esa parte queda tapada
    en el plano y tampoco se resalta. Así no aparecen recuadros en esquinas ni encuentros. */
 export function visibleEvents(vec, rules, fx) {
-  const sig = rules.map(r => r.id + ':' + r.key + ':' + (r.noDots !== false)).join('|') + '#' + editsSig(fx);
-  const hit = vec.ev.get(sig); if (hit) return hit;
+  const sig = rules.map(r => r.id + ':' + r.key + ':' + (r.noDots !== false)).join('|') + '#' + editsSig(fx) + '#c2';
+  const hit = vec.ev.get(sig);
+  if (hit) {
+    // la lectura vectorial se comparte entre planos (misma lámina): las reglas pueden ser otros objetos
+    // con el mismo id. Se devuelven con las reglas actuales, si no el resaltado sale con el color equivocado.
+    if (hit.rules && hit.rules.every((r, i) => r === rules[i])) return hit;
+    const byId = new Map(rules.map(r => [r.id, r]));
+    const ev = hit.map(([s, r]) => [s, r ? byId.get(r.id) || r : null]);
+    ev.count = hit.count; ev.bb = hit.bb; ev.cover = hit.cover; ev.rules = rules.slice();
+    vec.ev.set(sig, ev);
+    return ev;
+  }
   const byKey = new Map(rules.map(r => [r.key, r]));
+  // Tuberías (plano B): una tubería del mismo color puede venir dibujada en parte como línea y en parte como
+  // relleno (tramos, flechas, accesorios). Se toman todas las formas de ese color, sea cual sea la que se tocó.
+  const byColor = new Map();
+  for (const r of rules) if (r.plan === 'B') { const c = (String(r.key || '').match(/^[fs](#[0-9a-f]{6})/i) || [])[1]; if (c && !byColor.has(c.toLowerCase())) byColor.set(c.toLowerCase(), r); }
+  const ruleOf = s => byKey.get(s.key) || (byColor.size && s.c ? byColor.get(String(s.c).toLowerCase()) : undefined);
   const excl = fx ? new Set(fx.excl) : null;
   const bbs = [];
   for (const s of vec.shapes) {
-    const r = byKey.get(s.key);
+    const r = ruleOf(s);
     if (r && !(r.noDots !== false && isSymbol(s)) && !(excl && excl.has(s.i))) bbs.push(s.bb);
   }
   const U = bbs.reduce((u, b) => [Math.min(u[0], b[0]), Math.min(u[1], b[1]), Math.max(u[2], b[2]), Math.max(u[3], b[3])], [Infinity, Infinity, -Infinity, -Infinity]);
@@ -256,10 +271,11 @@ export function visibleEvents(vec, rules, fx) {
   // Con estilos de relleno, lo que tapa la pared se decide mirando el plano dibujado (maskByPlan): el PDF puede
   // tener recortes (clip) y transparencias que la lectura vectorial no ve, y un relleno gris de zona que en el
   // plano queda recortado alrededor de las paredes las borraba enteras. Para trazos se mantiene el orden de pintura.
-  const occlude = !rules.every(r => r.kind === 'f' && /^f#[0-9a-f]{6}/i.test(r.key || ''));
+  // (las tuberías tampoco se cortan: lo que se dibuja encima de una tubería no la interrumpe)
+  const occlude = !rules.every(r => r.plan === 'B' || (r.kind === 'f' && /^f#[0-9a-f]{6}/i.test(r.key || '')));
   const ev = [], cover = []; let started = false, count = 0;
   for (const s of vec.shapes) {
-    const r = byKey.get(s.key);
+    const r = ruleOf(s);
     if (r) {
       if (r.noDots !== false && isSymbol(s)) continue;
       if (excl && excl.has(s.i)) continue;
@@ -270,7 +286,7 @@ export function visibleEvents(vec, rules, fx) {
     // puntos, etiquetas y otros símbolos dibujados encima de la pared no la cortan: la pared sigue corrida debajo
     if (isSymbol(s)) cover.push(s); else if (occlude) ev.push([s, null]);
   }
-  ev.count = count; ev.bb = U; ev.cover = cover;
+  ev.count = count; ev.bb = U; ev.cover = cover; ev.rules = rules.slice();
   vec.ev.set(sig, ev);
   return ev;
 }
@@ -410,8 +426,11 @@ export function overlayCanvas(k, rules, maxPx) {
   const sc = Math.min(1, maxPx/Math.max(p.w, p.h));
   const c = document.createElement('canvas'); c.width = Math.ceil(p.w*sc); c.height = Math.ceil(p.h*sc);
   const g = c.getContext('2d'); g.setTransform(sc, 0, 0, sc, 0, 0);
-  paintEvents(g, ev, r => fire.has(r) ? FIRE_HL : (r.hl || PIPE_HL[0]), (fire.size ? 1.5 : 2.6)/sc, fx);
-  const cols = fillColors(rules.map(([r]) => r));
+  const fireIds = new Set([...fire].map(r => r.id));
+  paintEvents(g, ev, r => fireIds.has(r.id) ? FIRE_HL : (r.hl || PIPE_HL[0]), (fire.size ? 1.5 : 2.6)/sc, fx);
+  // la comprobación contra el plano dibujado es solo para paredes: las tuberías delgadas se dibujan con borde
+  // negro y su color casi no se ve en la imagen, así que se cortaban a tramos
+  const cols = fillColors(rules.filter(([, f]) => f).map(([r]) => r));
   if (cols.length && rt.bmp) {
     try {
       const g2 = c.getContext('2d', {willReadFrequently:true}), O = g2.getImageData(0, 0, c.width, c.height);

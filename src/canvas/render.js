@@ -1,5 +1,5 @@
 /* Lienzo principal: tamaño, dibujo de planos, marcas y sellos, y copias reducidas para dibujar rápido. */
-import { $, ST, txtOn } from '../core/constants.js';
+import { $, LITE, ST, txtOn } from '../core/constants.js';
 import { align, cur, gesture, hover, L, RT, S, sel, tool, view } from '../core/state.js';
 import { dist, M, rectPts, s2w, toLocal, toWorld, w2s } from '../core/geometry.js';
 import { drawTable } from './tables.js';
@@ -10,6 +10,7 @@ import { wallFixLintels, wallFixMasks, wallFixPreview, wfDraft, wfMode } from '.
 import { drawLevelRects } from '../plans/arqlevels.js';
 import { isAKey, lookOf, planKeys } from '../plans/extraA.js';
 import { makeTint } from '../plans/load.js';
+import { toast } from '../ui/app.js';
 import { drawDetail, scheduleDetail } from './detail.js';
 
 /* ---------- lienzo ---------- */
@@ -38,7 +39,17 @@ export function resize() {
 
 export let rafPending = false;
 
-export function dirty() { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; draw(); }); } }
+export function dirty() { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; const t0 = performance.now(); draw(); watchSpeed(performance.now() - t0); }); } }
+/* Si la computadora tarda mucho en dibujar, se sugiere una vez el ahorro de memoria. */
+let slowAvg = 0, slowN = 0, slowTold = false;
+function watchSpeed(ms) {
+  if (LITE || slowTold || EXPORT) return;
+  slowAvg = slowN ? slowAvg*0.9 + ms*0.1 : ms; slowN++;
+  if (slowN > 40 && slowAvg > 45) {
+    slowTold = true;
+    toast('La app va lenta en esta computadora. Pruebe Archivo → Ahorro de memoria y revise que Chrome tenga activada la aceleración por hardware.');
+  }
+}
 
 export function setWorld(p) {
   ctx.setTransform(VM[0], VM[1], VM[2], VM[3], VM[4], VM[5]);
