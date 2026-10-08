@@ -312,13 +312,13 @@ function aRowHtml(aid, lv, first) {
     : `<p class="muted small" data-lv style="margin:4px 0 0">Esta hoja no tiene niveles definidos: se usa completa.</p>`;
   return `<div class="apick" data-row><div class="apick-h"><select data-asel aria-label="Arquitectónico">${opts}</select>${first ? '' : `<button type="button" class="icon" data-arm title="Quitar esta lámina">${ICON.trash}</button>`}</div>${checks}</div>`;
 }
-export function aPickerHtml(sel) {
+export function aPickerHtml(sel, cls = '') {
   const rows = [aRowHtml(sel.a, sel.lv || [], true), ...(sel.more || []).filter(m => P.sheets[m.aSheet]).map(m => aRowHtml(m.aSheet, m.aLevels || [], false))];
-  return `<div class="apicker">${rows.join('')}<button type="button" class="btn" data-aadd>+ Nivel de otra lámina de arquitectónicos</button>
+  return `<div class="apicker${cls ? ' ' + cls : ''}">${rows.join('')}<button type="button" class="btn" data-aadd>+ Nivel de otra lámina de arquitectónicos</button>
     <p class="muted small" style="margin:0">Sin marcar niveles se usa la hoja completa. Con varios niveles se crea una planta por nivel. Si un nivel está en otra lámina (por ejemplo el 5 en A-49 y el 6 en A-50), agréguela aquí.</p></div>`;
 }
-export function wireAPicker(root) {
-  const box = root.querySelector('.apicker'); if (!box) return;
+export function wireAPicker(root, sel = '.apicker:not(.alt)') {
+  const box = root.querySelector(sel); if (!box) return;
   box.querySelectorAll('[data-lv]').forEach(wireLevelChecks);
   box.addEventListener('change', e => {
     const s = e.target.closest('[data-asel]'); if (!s) return;
@@ -336,8 +336,8 @@ export function wireAPicker(root) {
     }
   });
 }
-export function readAPicker(root) {
-  const rows = [...root.querySelectorAll('.apicker [data-row]')];
+export function readAPicker(root, sel = '.apicker:not(.alt)') {
+  const rows = [...root.querySelectorAll(sel + ' [data-row]')];
   const read = row => { const a = row.querySelector('[data-asel]').value, c = row.querySelector('.checks[data-lv]'); return {a, lv: c ? normEntries(P.sheets[a], readLevelChecks(c)) : []}; };
   const main = read(rows[0]), seen = new Set([main.a]), more = [];
   for (const row of rows.slice(1)) { const r = read(row); if (seen.has(r.a)) continue; seen.add(r.a); more.push({aSheet: r.a, aLevels: r.lv}); }

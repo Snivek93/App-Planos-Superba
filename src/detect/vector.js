@@ -8,6 +8,7 @@ import { ensurePdf } from '../plans/load.js';
 import { DB } from '../core/storage.js';
 import { detectLintels } from './lintels.js';
 import { extraEdits, extraFireRules, extraKeys, isAKey, lookOf, planKeys } from '../plans/extraA.js';
+import { altOn } from '../plans/altA.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
@@ -524,6 +525,7 @@ export function drawAutoHighlights() {
   S.auto.pipes.forEach((r, i) => r.hl = PIPE_HL[i % PIPE_HL.length]);
   for (const k of planKeys()) {
     if (!RT[k] || !RT[k].bmp || !lookOf(k).visible) continue;
+    if (isAKey(k) && altOn()) continue; // vista "Losa": las paredes resaltadas son las del nivel de abajo, no se dibujan sobre la losa
     const o = overlayFor(k); if (!o) continue;
     const p = S.plans[k];
     for (const [fr, clip] of planFrames(k)) {
@@ -538,7 +540,7 @@ export function drawAutoHighlights() {
 
 /* se llama desde drawPlan, justo después de pintar el plano A */
 export function drawKnockout(k, p, fr, clip) {
-  if (!isAKey(k) || !S.auto.show || solo) return;
+  if (!isAKey(k) || !S.auto.show || solo || altOn()) return;
   const o = RT[k] && RT[k].vec ? overlayFor(k) : null; if (!o || !o.ko) return;
   const ka = fireAlpha(true).ko; if (!ka) return;
   ctx.save(); ctx.globalAlpha = (lookOf(k).opacity ?? 1)*ka; ctx.globalCompositeOperation = 'source-over'; blitPart(o.ko, p, fr, clip); ctx.restore();

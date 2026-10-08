@@ -8,8 +8,9 @@ import { pushUndo } from '../core/undo.js';
 import { loadVars, makeTint, removePlan, swapPlans } from '../plans/load.js';
 import { renderSeals } from './sellos.js';
 import { save } from '../core/storage.js';
-import { changed, closePanel, toast } from '../ui/app.js';
+import { changed, closePanel, renderAll, toast } from '../ui/app.js';
 import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/levels.js';
+import { prepareAlt } from '../plans/altA.js';
 import { addFloor, autoAlignFloor, deleteFloor, editFloorZoneB, fitRect, floorById, setFloorLevels, floorRectWorld, floorsHtml } from '../plans/floors.js';
 import { aLevelsLabel, curSheet, showHome } from '../project/model.js';
 import { changePage, chooseA } from '../project/sheets.js';
@@ -84,6 +85,10 @@ export function init() {
     else if (a === 'resetB') { if (p.locked) return toast('El plano B está bloqueado.'); pushUndo(); const A = S.plans.A; p.r = 0; p.x = 0; p.y = 0; p.s = (A.w && p.w) ? (A.w*A.s)/p.w : 1; changed(); renderPlans(); }
     else if (a === 'swap') swapPlans();
     else if (a === 'addFloor') addFloor();
+    else if (a === 'fAltAxes') {
+      const fl = floorById(b.closest('[data-floor]').dataset.floor); if (!fl || !fl.alt) return;
+      fl.alt.pending = true; prepareAlt().then(() => { save(); renderPlans(); renderAll(); });
+    }
     else if (['fAxes', 'fAlign', 'fMove', 'fView', 'fDel', 'fZoneB'].includes(a)) {
       const fl = floorById(b.closest('[data-floor]').dataset.floor); if (!fl) return;
       if (a === 'fAxes') autoAlignFloor(fl);

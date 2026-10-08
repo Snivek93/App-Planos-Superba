@@ -128,6 +128,6 @@
 .tiles.grid .taddli:only-child .tadd{min-height:84px}
 .tiles.list .tadd{min-height:44px}
 @media (max-width:560px){ .tiles.grid .tadd{min-height:48px} }
-#lvlSel{flex:0 1 auto;height:36px;max-width:min(240px,30vw);min-width:90px;font-size:14px;border-radius:8px;padding:0 6px}
-#lvlSel.on{border-color:#12866b;color:#12866b;font-weight:600}
-@media (max-width:640px){#lvlSel{max-width:34vw;font-size:13px;padding:0 2px}}
+#lvlSel,#aViewSel{flex:0 1 auto;height:36px;max-width:min(240px,30vw);min-width:90px;font-size:14px;border-radius:8px;padding:0 6px}
+#lvlSel.on,#aViewSel.on{border-color:#12866b;color:#12866b;font-weight:600}
+@media (max-width:640px){#lvlSel,#aViewSel{max-width:34vw;font-size:13px;padding:0 2px}}

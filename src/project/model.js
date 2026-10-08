@@ -52,6 +52,8 @@ export function renderSheetSel() {
   h += '<optgroup label="──────────"><option value="__new">＋ Nuevo plano de instalaciones…</option><option value="__arq">＋ Agregar arquitectónicos…</option><option value="__home">⌂ Inicio del proyecto</option></optgroup>';
   if (el._h !== h) { el.innerHTML = h; el._h = h; }
   el.value = P.active || '';
+  const av = $('#aViewSel');
+  if (av) { const sh = P.active ? P.sheets[P.active] : null, on = !!(sh && sh.kind === 'pair' && sh.aAlt && sh.aAlt.a && P.sheets[sh.aAlt.a]); av.hidden = !on; if (on) { av.value = S.aView === 'losa' ? 'losa' : 'paredes'; av.classList.toggle('on', av.value === 'losa'); } }
   const lv = $('#lvlSel'); if (!lv) return;
   const lh = levelViewOptions();
   if (lv._h !== lh) { lv.innerHTML = lh; lv._h = lh; }

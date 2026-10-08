@@ -14,7 +14,8 @@ import { gcFiles, loadPlanFile, storeFile, trimInactive } from './files.js';
 import { commitShared, injectShared } from './shared.js';
 import { renderProject } from '../home/home.js';
 import { aPickerHtml, arqLevelOptions, normEntries, parseALevel, readAPicker, setViewLevel, syncLevelFloors, wireAPicker } from '../plans/arqlevels.js';
-import { clearExtras, extraKeys, setupExtras } from '../plans/extraA.js';
+import { altOnly, clearExtras, extraKeys, setupExtras } from '../plans/extraA.js';
+import { hasAlt, prepareAlt, syncAltFloors } from '../plans/altA.js';
 import { syncSealDiams } from '../panels/sellos.js';
 import { alignPending } from '../plans/floors.js';
 
@@ -35,7 +36,7 @@ export async function openSheet(id, opt = {}) {
   // A y B se cargan a la vez (B espera a A solo la primera vez, para ajustar su escala)
   const initB = opt.initB || sh.initB, loads = [];
   if (S.plans.A.fileId) loads.push(loadPlanFile('A', S.plans.A.fileId, S.plans.A.page));
-  for (const k of extraKeys) if (S.plans[k].fileId) loads.push(loadPlanFile(k, S.plans[k].fileId, S.plans[k].page));
+  for (const k of extraKeys) if (S.plans[k].fileId && !altOnly.has(k)) loads.push(loadPlanFile(k, S.plans[k].fileId, S.plans[k].page));
   if (sh.kind === 'pair' && S.plans.B.fileId) {
     if (initB) { await Promise.all(loads); loads.length = 0; if (P.active !== id) return; }
     loads.push(loadPlanFile('B', S.plans.B.fileId, S.plans.B.page, {initB}));
@@ -47,6 +48,7 @@ export async function openSheet(id, opt = {}) {
   renderAll(); fit(); save(); needVecInBackground(); trimInactive();
   if (sh.kind === 'pair') syncSealDiams();
   if (S.floors.some(f => f.pending)) { await alignPending(); if (P.active === id) { renderAll(); fit(); save(); } }
+  if (P.active === id && hasAlt(sh)) { syncAltFloors(sh); if (S.aView === 'losa') { await prepareAlt(); if (P.active === id) { renderAll(); save(); } } }
 }
 
 export function closeSheet() {
@@ -150,7 +152,7 @@ export async function chooseA() {
     html: aPickerHtml({a: sh.aSheet, lv: sh.aLevels, more: sh.aMore}),
     setup: wireAPicker,
     buttons:[{label:'Cancelar', value:null}, {label:'Usar este', value:'ok', primary:true}],
-    read: readAPicker});
+    read: r => readAPicker(r)});
   if (!v) return;
   const key = x => JSON.stringify([x.a, x.lv, (x.more || []).map(m => [m.aSheet, m.aLevels])]);
   if (key(v) !== key({a: sh.aSheet, lv: sh.aLevels || [], more: sh.aMore || []})) await setPairA(sh, v.a, v.lv, v.more);
@@ -164,12 +166,32 @@ export async function setPairA(sh, a, lv, more) {
   commitShared(); sh.aSheet = a; sh.aLevels = lv; P.lastA = a; P.lastLv = sh.aLevels; P.lastMore = sh.aMore || null; injectShared(sh); pathCache.clear();
   if (!sameA) await loadPlanFile('A', S.plans.A.fileId, S.plans.A.page);
   setupExtras(sh);
-  await Promise.all(extraKeys.filter(k => S.plans[k].fileId).map(k => loadPlanFile(k, S.plans[k].fileId, S.plans[k].page)));
+  await Promise.all(extraKeys.filter(k => S.plans[k].fileId && !altOnly.has(k)).map(k => loadPlanFile(k, S.plans[k].fileId, S.plans[k].page)));
   const made = syncLevelFloors(sh);
+  if (hasAlt(sh)) { syncAltFloors(sh); if (S.aView === 'losa') await prepareAlt(); }
   if (!sameA && S.floors.some(f => !f.src)) toast('Cambió el plano A: revise la alineación de las plantas.');
   else if (made && S.floors.some(f => f.src)) toast('Se crearon las plantas de los niveles elegidos. Revise en Planos que cada una calce con el plano B.');
   renderAll(); fit(); save(); needVecInBackground();
   if (S.floors.some(f => f.pending)) { await alignPending(); renderAll(); fit(); save(); }
+}
+
+/* plano A para revisar losas (opcional), en el diálogo del plano */
+function altPickerBlock(sh) {
+  const has = !!(sh.aAlt && sh.aAlt.a && P.sheets[sh.aAlt.a]);
+  const sel = has ? sh.aAlt : {a: sh.aSheet, lv: [], more: []};
+  return `<div class="row"><span>Plano A para revisar losas</span>
+    <label class="chk small" style="margin:0"><input type="checkbox" id="altOn"${has ? ' checked' : ''}> Usar otro arquitectónico para ver los pasos por losa</label>
+    <div id="altBox"${has ? '' : ' hidden'}>${aPickerHtml(sel, 'alt')}</div>
+    <p class="muted small" style="margin:0">Para tuberías bajo losa (sanitario, pluvial): el plano A de arriba es el de las paredes (nivel inferior); aquí elija el del mismo nivel del plano B, en el mismo orden de plantas. Con el selector de la barra de arriba se cambia entre "A: paredes" y "A: losa". Solo cambia lo que se ve.</p></div>`;
+}
+function wireAltPicker(r) {
+  const cb = r.querySelector('#altOn'), box = r.querySelector('#altBox'); if (!cb || !box) return;
+  wireAPicker(r, '.apicker.alt');
+  cb.onchange = () => { box.hidden = !cb.checked; };
+}
+function readAltPicker(r) {
+  const cb = r.querySelector('#altOn'); if (!cb || !cb.checked) return null;
+  const v = readAPicker(r, '.apicker.alt'); return v && v.a ? v : null;
 }
 
 export async function sheetDialog(id) {
@@ -177,18 +199,22 @@ export async function sheetDialog(id) {
   const pair = sh.kind === 'pair';
   const html = `<label class="row"><span>Nombre</span><input type="text" id="sdName" value="${esc(sh.name)}"></label>
     ${pair ? `<label class="row"><span>Sección</span><select id="sdLoc">${espLocOptions(sh.sec, sh.sub)}</select></label>
-    <div class="row"><span>Plano A (arquitectónico)</span>${aPickerHtml({a: sh.aSheet, lv: sh.aLevels, more: sh.aMore})}</div>` :
+    <div class="row"><span>Plano A (arquitectónico)</span>${aPickerHtml({a: sh.aSheet, lv: sh.aLevels, more: sh.aMore})}</div>
+    ${altPickerBlock(sh)}` :
     `<p class="muted small" style="margin:0">Planos que usan esta hoja: ${Object.values(P.sheets).filter(s => s.aSheet === id || (s.aMore || []).some(m => m.aSheet === id)).map(s => esc(s.name)).join(', ') || 'ninguno'}.</p>`}`;
-  const v = await ask({title: pair ? 'Plano de instalaciones' : 'Hoja de arquitectónicos', html, wide: pair, setup: wireAPicker,
+  const v = await ask({title: pair ? 'Plano de instalaciones' : 'Hoja de arquitectónicos', html, wide: pair, setup: r => { wireAPicker(r); wireAltPicker(r); },
     buttons:[{label:'Cancelar', value:null}, {label:'Eliminar', value:'del', danger:true}, {label:'Guardar', value:'ok', primary:true}],
-    read: (r, act) => ({act, name: r.querySelector('#sdName').value.trim(), loc: r.querySelector('#sdLoc')?.value, pick: pair ? readAPicker(r) : null})});
+    read: (r, act) => ({act, name: r.querySelector('#sdName').value.trim(), loc: r.querySelector('#sdLoc')?.value, pick: pair ? readAPicker(r) : null, alt: pair ? readAltPicker(r) : undefined})});
   if (!v) return;
   if (v.act === 'del') return deleteSheet(id);
   if (v.name) sh.name = v.name;
   if (pair) {
     const [s, u] = v.loc.split('|'); const ok0 = catKey(sh); sh.sec = s; sh.sub = u || null; adoptCats(sh, ok0);
     const key = x => JSON.stringify([x.a, x.lv, (x.more || []).map(m => [m.aSheet, m.aLevels])]);
+    const altCh = JSON.stringify(v.alt || null) !== JSON.stringify(sh.aAlt || null);
+    if (altCh) { if (v.alt) sh.aAlt = v.alt; else { delete sh.aAlt; sh.state.floors.forEach(f => delete f.alt); if (sh.state.aView) sh.state.aView = 'paredes'; } }
     if (v.pick && key(v.pick) !== key({a: sh.aSheet, lv: sh.aLevels || [], more: sh.aMore || []})) await setPairA(sh, v.pick.a, v.pick.lv, v.pick.more);
+    else if (altCh && P.active === sh.id) await openSheet(sh.id);
   }
   save(); renderProject(); renderTop();
 }
@@ -220,5 +246,10 @@ export function init() {
     else if (v && v !== P.active) openSheet(v);
   });
   $('#lvlSel').addEventListener('change', e => { setViewLevel(e.target.value); e.target.classList.toggle('on', !!e.target.value); fit(); dirty(); });
+  $('#aViewSel').addEventListener('change', async e => {
+    S.aView = e.target.value; e.target.classList.toggle('on', S.aView === 'losa'); save();
+    if (S.aView === 'losa') { toast('Cargando el plano A de losas…'); await prepareAlt(); save(); }
+    renderAll(); dirty();
+  });
   $('#fileB').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; const t = pendingB || {}; pendingB = null; if (fs.length) addPairFiles(fs, t.sec, t.sub); });
 }

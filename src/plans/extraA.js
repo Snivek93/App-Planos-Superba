@@ -21,7 +21,7 @@ export function akOf(f) { return (f && f.asheet && bySheet[f.asheet]) || 'A'; }
 
 export function clearExtras() {
   for (const k of extraKeys) { delete RT[k]; if (S && S.plans) delete S.plans[k]; }
-  extraKeys = []; bySheet = {}; sheetOf = {};
+  extraKeys = []; bySheet = {}; sheetOf = {}; altOnly.clear();
 }
 
 /* Prepara los planos A adicionales de la hoja (sin cargar las imágenes): posición a la derecha del principal. */
@@ -39,11 +39,24 @@ export function setupExtras(sh) {
     RT[k] = RT_BLANK(); if (a.fileId) RT[k].loading = true;
     extraKeys.push(k); bySheet[m.aSheet] = k; sheetOf[k] = m.aSheet;
   });
+  // láminas del plano A para revisar losas (sh.aAlt) que no estén ya cargadas: se cargan al ver "losa"
+  const al = sh.aAlt, alts = al && al.a ? [al.a, ...(al.more || []).map(m => m.aSheet)] : [];
+  for (const id of alts) {
+    if (id === sh.aSheet || bySheet[id] || !P.sheets[id]) continue;
+    const a = P.sheets[id].state.plans.A, k = 'A' + (extraKeys.length + 1);
+    x += Math.max(200, (A.w || a.w || 1000)*A.s*0.06);
+    S.plans[k] = Object.assign(newPlan(), {fileId:a.fileId, page:a.page, w:a.w, h:a.h, pages:a.pages, name:a.name, x, y:A.y, s:A.s, r:0});
+    x += (a.w || 0)*A.s;
+    RT[k] = RT_BLANK();
+    extraKeys.push(k); bySheet[id] = k; sheetOf[k] = id; altOnly.add(k);
+  }
 }
+/* claves de láminas que solo se usan para ver losas (no se cargan hasta que se piden) */
+export const altOnly = new Set();
 
 /* reglas de paredes cortafuego del arquitectónico de un plano A adicional, como reglas de ese plano */
 export function extraFireRules(k) {
-  const id = sheetOf[k], arq = id && P.sheets[id]; if (!arq) return [];
+  const id = sheetOf[k], arq = id && P.sheets[id]; if (!arq || altOnly.has(k)) return [];
   return (arq.state.auto.fire || []).map(r => ({...r, id: k + ':' + r.id, plan: k}));
 }
 /* ajustes a mano (Afinar paredes) del arquitectónico de un plano A adicional */
