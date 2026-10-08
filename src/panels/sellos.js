@@ -73,21 +73,28 @@ export async function autoDiam(m, w, quiet) {
     return true;
   } catch (e) { /* sin texto legible en el PDF: queda sin diámetro */ }
 }
-/* Al abrir un plano: los sellos de una categoría de diámetro llevan ese diámetro, y a los que no tienen
-   diámetro se les busca el rótulo de la tubería más cercano. Así la etiqueta junto al sello siempre está al día. */
+/* Al abrir un plano: solo se completa la etiqueta de los sellos que NO tienen diámetro y cuya categoría
+   es un diámetro. Nunca se cambia una etiqueta ni una categoría ya puestas (pueden ser correcciones a mano). */
 export async function syncSealDiams() {
   let ch = 0;
   for (const m of S.marks) {
-    if (m.type !== 'seal') continue;
+    if (m.type !== 'seal' || m.diam) continue;
     const n = (ST[m.st]?.name || '').trim();
-    if (isDiamName(n) && m.diam !== n) { setSealDiam(m, n); ch++; }
+    if (isDiamName(n)) { setSealDiam(m, n); ch++; }
   }
   if (ch) { save(); renderSeals(); dirty(); }
+}
+/* Botón: a los sellos sin diámetro se les busca el rótulo de la tubería más cercano (no toca los que ya tienen). */
+export async function fillMissingDiams() {
   const sin = S.marks.filter(m => m.type === 'seal' && !m.diam);
-  if (!sin.length || !RT.B || !RT.B.isPdf || S.auto.diam === false) return;
+  if (!sin.length) return toast('Todos los sellos ya tienen diámetro.');
+  if (!RT.B || !RT.B.isPdf) return toast('El plano B no tiene texto legible para buscar diámetros.');
+  pushUndo();
   const S0 = S; let n = 0;
   for (const m of sin) if (await autoDiam(m, toWorld(frameOf(m), m.pts[0]), true)) n++;
-  if (n && S === S0) { save(); renderSeals(); renderOpts(); dirty(); }
+  if (S !== S0) return;
+  if (n) { save(); renderSeals(); renderOpts(); dirty(); }
+  toast(n ? `${n} ${n === 1 ? 'sello' : 'sellos'} con diámetro agregado.` : 'No se encontraron rótulos cerca de los sellos sin diámetro.');
 }
 /* al renombrar una categoría de diámetro, los sellos que llevaban ese diámetro se actualizan en todo el proyecto */
 function renameDiamCat(id, oldName, newName) {
@@ -128,6 +135,8 @@ export function renderSeals() {
     return `<button class="fsum" data-act="sfilterSet" data-v="${id}"><span class="fname">${esc(name)}</span><b>${mu > 1 ? `${l.length} × ${mu} = ${l.length*mu}` : l.length}</b>${fl ? `<span class="lv">${mu === 1 ? 'Nivel' : 'Niveles'} ${esc(joinY(floorLevels(fl)))}</span>` : ''}<span class="typesum">${typeChips(l)}</span></button>`; }).join('')}</div>`;
   const pendD = S.marks.filter(m => m.type === 'seal' && m.st === 'pend' && m.diam).length;
   if (pendD) h += `<p class="help" style="margin:8px 0 0">${pendD} ${pendD === 1 ? 'sello está' : 'sellos están'} en "Por definir" aunque ${pendD === 1 ? 'tiene' : 'tienen'} diámetro (por ejemplo porque se borró su categoría). <button class="linkbtn" data-act="pendDiam">Asignar categoría por diámetro</button></p>`;
+  const sinD = S.marks.filter(m => m.type === 'seal' && !m.diam).length;
+  if (sinD && RT.B && RT.B.isPdf) h += `<p class="help" style="margin:8px 0 0">${sinD} ${sinD === 1 ? 'sello no tiene' : 'sellos no tienen'} diámetro. <button class="linkbtn" data-act="fillDiam">Buscar diámetro en el plano B</button> (no cambia los que ya tienen).</p>`;
   h += `<div class="btnrow"><button class="btn red" data-act="detect">Detectar cruces</button><button class="btn" data-act="renum">Renumerar</button><button class="btn" data-act="csv">Exportar CSV</button><button class="btn primary" data-act="fss">Excel para Firestop Suite</button></div>
     <p class="help">Detectar cruces busca dónde un trazo de una capa de Instalaciones cruza una línea de una capa de Pared cortafuego, y pone ahí un sello del tipo configurado en esa capa.</p>
     <div class="field" style="grid-template-columns:150px 1fr auto;margin-top:12px"><label>Opacidad de los sellos</label><input type="range" min="0.2" max="1" step="0.05" value="${S.sealAlpha ?? 0.7}" data-act="sealAlpha" aria-label="Opacidad de los sellos"><output>${Math.round((S.sealAlpha ?? 0.7)*100)} %</output></div>
@@ -264,6 +273,7 @@ export function init() {
       for (const m of S.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(m.diam)); n++; }
       changed(); renderSeals(); toast(`${n} ${n === 1 ? 'sello asignado' : 'sellos asignados'} a la categoría de su diámetro.`); return;
     }
+    if (a === 'fillDiam') { fillMissingDiams(); return; }
     if (a === 'detect') detectCrossings();
     else if (a === 'renum') renumber();
     else if (a === 'csv') exportCSV();
