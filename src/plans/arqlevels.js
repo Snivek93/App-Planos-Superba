@@ -241,7 +241,7 @@ function floorFromLevel(st, l) {
   const A = st.plans.A;
   const q = [[l.a[0], l.a[1]], [l.a[2], l.a[1]], [l.a[2], l.a[3]], [l.a[0], l.a[3]]].map(v => toLocal(B, toWorld(A, v)));
   const b = [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))];
-  return {id:'f' + uid(), src:l.id, name:l.name, levels:l.levels, a:l.a.slice(), b, at:{x:A.x, y:A.y, s:A.s, r:A.r || 0}, how:'nivel', pending:true,
+  return {id:'f' + uid(), src:l.id, name:l.name, levels:l.levels, lvArq:l.levels, a:l.a.slice(), b, at:{x:A.x, y:A.y, s:A.s, r:A.r || 0}, how:'nivel', pending:true,
     info:'Del arquitectónico, ubicada según la alineación general. Si no calza, use "Alinear por ejes" o "2 puntos".'};
 }
 /* Nivel de otra lámina: en el plano B se ubica en la parte que no ocupan las otras plantas
@@ -257,7 +257,7 @@ function floorFromOther(st, l) {
   }
   // el nivel se pone con su centro sobre el centro de esa zona del B, con la escala general del A
   const at = centerAt(st.plans.A, l.a, b);
-  return {id:'f' + uid(), src:l.id, asheet:l.asheet, name:l.name, levels:l.levels, a:l.a.slice(), b, at, how:'sin', pending:true,
+  return {id:'f' + uid(), src:l.id, asheet:l.asheet, name:l.name, levels:l.levels, lvArq:l.levels, a:l.a.slice(), b, at, how:'sin', pending:true,
     info:`Nivel de ${l.sheetName || 'otra lámina'}. Se intenta alinear por ejes; si no calza, use "Alinear por ejes" o "2 puntos".`};
 }
 /* Ajusta plantas, recorte del plano A y niveles según los niveles elegidos del arquitectónico. */
@@ -282,7 +282,7 @@ export function syncLevelFloors(sh) {
     for (const l of lv) {
       const f = st.floors.find(f => same(f, l));
       if (!f) { st.floors.push(floorFromLevel(st, l)); ch = true; }
-      else { f.a = l.a.slice(); f.name = l.name; f.levels = l.levels; }
+      else { f.a = l.a.slice(); f.name = l.name; f.lvArq = l.levels; if (!f.lvOwn) f.levels = l.levels; } // niveles cambiados en el plano: se respetan
     }
   } else {
     const n = st.floors.length; st.floors = st.floors.filter(f => !f.src); if (st.floors.length !== n) ch = true;

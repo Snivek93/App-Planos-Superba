@@ -336,12 +336,23 @@ export function floorsHtml() {
     <p class="help" style="margin:0 0 10px">Si la lámina trae dos plantas (por ejemplo nivel 21 y 22) y no quedan a la misma distancia en el arquitectónico y en el mecánico, defina cada planta. Cada una se alinea por separado, por sus ejes.</p>
     ${S.floors.length ? `<ul class="floors">${S.floors.map(f => `<li data-floor="${f.id}">
       <div class="frow"><input data-act="fname" value="${esc(f.name)}" aria-label="Nombre de la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}>${st(f)}</div>
-      <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
+      <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"${f.src ? ` title="En este plano puede indicar más niveles que el del arquitectónico (planta típica). Vacío: vuelve a ${esc(f.lvArq ?? f.levels ?? '')}."` : ''}><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
+      ${f.src && f.lvOwn ? `<div class="small muted">En el arquitectónico es ${esc(f.lvArq || '')}; deje vacío para volver a ese.</div>` : ''}
       <label class="chk small" style="margin:6px 0 0"><input type="checkbox" data-act="fbelow"${(f.below ?? S.below) ? ' checked' : ''}> Tuberías bajo losa (paredes en el nivel inferior)</label>
       ${f.info ? `<div class="small muted">${esc(f.info)}</div>` : ''}
       ${f.asheet ? `<div class="small muted">Arquitectónico: ${esc(P.sheets[f.asheet]?.name || '')}</div>` : ''}
       <div class="btnrow"><button class="btn" data-act="fAxes">Alinear por ejes</button>${f.src ? '<button class="btn" data-act="fZoneB" title="Encerrar en el plano B la zona de esta planta">Zona en B</button>' : ''}<button class="btn" data-act="fAlign">2 puntos</button><button class="btn" data-act="fMove">Mover</button><button class="btn" data-act="fView">Ver</button>${f.src ? '' : `<button class="icon" data-act="fDel" title="Quitar planta">${ICON.trash}</button>`}</div></li>`).join('')}</ul>` : ''}
     <button class="btn primary" data-act="addFloor">Agregar planta</button></section>`;
+}
+
+/* Niveles que representa una planta. En las que vienen del arquitectónico se pueden indicar más niveles
+   (por ejemplo el nivel 7 del arquitectónico representa 7 y 8 en este plano); vacío vuelve a los del arquitectónico. */
+export function setFloorLevels(f, v) {
+  if (!f.src) { f.levels = v; return; }
+  const arq = f.lvArq ?? f.levels;
+  f.lvArq = arq;
+  if (!v || v === arq) { f.levels = arq; delete f.lvOwn; }
+  else { f.levels = v; f.lvOwn = true; }
 }
 
 /* Acceso de escritura para otros módulos (los import de ES son de solo lectura). */

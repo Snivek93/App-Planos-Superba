@@ -10,7 +10,7 @@ import { renderSeals } from './sellos.js';
 import { save } from '../core/storage.js';
 import { changed, closePanel, toast } from '../ui/app.js';
 import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/levels.js';
-import { addFloor, autoAlignFloor, deleteFloor, editFloorZoneB, fitRect, floorById, floorRectWorld, floorsHtml } from '../plans/floors.js';
+import { addFloor, autoAlignFloor, deleteFloor, editFloorZoneB, fitRect, floorById, setFloorLevels, floorRectWorld, floorsHtml } from '../plans/floors.js';
 import { aLevelsLabel, curSheet, showHome } from '../project/model.js';
 import { changePage, chooseA } from '../project/sheets.js';
 import { renderOpBubble } from '../ui/opacity.js';
@@ -106,7 +106,7 @@ export function init() {
   tp.addEventListener('change', e => {
     const t = e.target, a = t.dataset.act, k = t.dataset.k;
     if (a === 'fname') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { fl.name = t.value.trim() || fl.name; save(); dirty(); renderSeals(); } return; }
-    if (a === 'flevels') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { fl.levels = t.value.trim(); save(); renderPlans(); renderSeals(); dirty(); toast(`"${fl.name}" representa ${floorMult(fl) === 1 ? 'el nivel' : 'los niveles'} ${joinY(floorLevels(fl))} (×${floorMult(fl)}).`); } return; }
+    if (a === 'flevels') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { setFloorLevels(fl, t.value.trim()); save(); renderPlans(); renderSeals(); dirty(); toast(`"${fl.name}" representa ${floorMult(fl) === 1 ? 'el nivel' : 'los niveles'} ${joinY(floorLevels(fl))} (×${floorMult(fl)}).`); } return; }
     if (a === 'pbelow') { S.below = t.checked; S.floors.forEach(f => f.below = t.checked); save(); renderPlans(); renderSeals(); return; }
     if (a === 'fbelow') { const fl = floorById(t.closest('[data-floor]').dataset.floor); if (fl) { fl.below = t.checked; save(); renderSeals(); } return; }
     if (a === 'lvName' || a === 'lvLevels') { levelsChange(t, t.closest('[data-lvl]')); return; }
