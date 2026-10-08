@@ -8,7 +8,7 @@ import { deleteSel, finishPoly, moveSelToLayer } from './pointer.js';
 import { startAlign } from './align.js';
 import { pushUndo } from '../core/undo.js';
 import { renderLayers } from '../panels/capas.js';
-import { addCategory } from '../panels/sellos.js';
+import { addCategory, setSealCat } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { changed, openPanel, setTab, toast } from '../ui/app.js';
 import { LOC_NAME, locOf } from '../core/levels.js';
@@ -189,6 +189,6 @@ export function init() {
     else if (s.dataset.o === 'moveTo') moveSelToLayer(s.value);
     else if (s.dataset.o === 'selMem') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (s.checked) m.mem = true; else delete m.mem; } } changed(); renderOpts(); }
     else if (s.dataset.o === 'selLoc' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.loc = s.value; } changed(); }
-    else if (s.dataset.o === 'selType' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.st = s.value; } changed(); }
+    else if (s.dataset.o === 'selType' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') setSealCat(m, s.value); } changed(); }
   });
 }

@@ -44,6 +44,26 @@ export function typeChips(list, wfn) {
   return byType.length ? byType.map(([t, c]) => `<span><i class="ldot" style="--c:${t.color}"></i>${esc(t.name)} <b>${c}</b></span>`).join('') : '<span class="muted">Sin sellos.</span>';
 }
 
+/* El diámetro del sello (etiqueta junto al círculo, Excel, CSV) sigue a su categoría cuando la categoría
+   es un diámetro: si se cambia de "ø13 mm" a "ø19 mm", la etiqueta también. */
+const isDiamName = n => /^[øØ⌀]\s*\d/.test(String(n || '').trim());
+export function setSealDiam(m, v) {
+  const old = m.diam; m.diam = v;
+  if (m.note && old && m.note.startsWith(old)) m.note = v + m.note.slice(old.length);
+  else if (m.note && m.note.startsWith('ø sin rótulo')) m.note = v + m.note.slice('ø sin rótulo'.length);
+}
+export function setSealCat(m, st) {
+  m.st = st;
+  const n = ST[st]?.name;
+  if (isDiamName(n) && m.diam !== n.trim()) setSealDiam(m, n.trim());
+  m.review = m.review && !isDiamName(n) ? m.review : false;
+}
+/* al renombrar una categoría de diámetro, los sellos que llevaban ese diámetro se actualizan en todo el proyecto */
+function renameDiamCat(id, oldName, newName) {
+  if (!isDiamName(oldName) || !isDiamName(newName) || oldName.trim() === newName.trim()) return;
+  for (const sh of Object.values(P.sheets)) for (const m of sh.state.marks) if (m.type === 'seal' && m.st === id && (!m.diam || m.diam === oldName.trim())) setSealDiam(m, newName.trim());
+}
+
 export function sealRow(m) {
   const t = ST[m.st] || ST.otro;
   return `<li data-id="${m.id}" class="${sel.has(m.id) ? 'on' : ''}"><button class="sn" style="--c:${t.color};color:${txtOn(t.color)}" data-act="goto" title="Ver en el plano">${m.n}</button>
@@ -210,7 +230,7 @@ export function init() {
     if (a === 'sfilterSet') { S.sealFilter = b.dataset.v; save(); renderSeals(); return; }
     if (a === 'pendDiam') {
       pushUndo(); let n = 0;
-      for (const m of S.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { m.st = catForName(m.diam); n++; }
+      for (const m of S.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(m.diam)); n++; }
       changed(); renderSeals(); toast(`${n} ${n === 1 ? 'sello asignado' : 'sellos asignados'} a la categoría de su diámetro.`); return;
     }
     if (a === 'detect') detectCrossings();
@@ -240,11 +260,11 @@ export function init() {
     if (li.dataset.cat) {
       const c = S.sealTypes.find(x => x.id === li.dataset.cat); if (!c) return;
       if (t.dataset.act === 'catColor') c.color = t.value;
-      if (t.dataset.act === 'catName') c.name = t.value.trim() || 'Sin nombre';
+      if (t.dataset.act === 'catName') { const old = c.name; c.name = t.value.trim() || 'Sin nombre'; renameDiamCat(c.id, old, c.name); }
       save(); renderSeals(); renderOpts(); renderLayers(); dirty(); return;
     }
     const m = MK(li.dataset.id); if (!m) return;
-    if (t.dataset.act === 'st') { pushUndo(); m.st = t.value; changed(); }
+    if (t.dataset.act === 'st') { pushUndo(); setSealCat(m, t.value); changed(); }
     else if (t.dataset.act === 'loc') { pushUndo(); m.loc = t.value; changed(); }
     else if (t.dataset.act === 'mem') { pushUndo(); if (t.checked) m.mem = true; else delete m.mem; changed(); }
     else if (t.dataset.act === 'note') { m.note = t.value; save(); }
@@ -254,9 +274,7 @@ export function init() {
       const mt = v.match(/^[øØ⌀]\s*(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?)\s*(mm|"|”|pulg|in)?$/);
       if (mt) v = diamLabel(mt[1], mt[2]);
       pushUndo();
-      const old = m.diam; m.diam = v;
-      if (m.note && old && m.note.startsWith(old)) m.note = v + m.note.slice(old.length);
-      else if (m.note && m.note.startsWith('ø sin rótulo')) m.note = v + m.note.slice('ø sin rótulo'.length);
+      setSealDiam(m, v);
       const cur = ST[m.st];
       if (v && (S.auto.catMode === 'diam') && (m.auto || /^ø/.test(cur.name) || m.st === 'pend')) m.st = catForName(v);
       m.review = false; changed();

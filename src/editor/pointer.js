@@ -1,5 +1,5 @@
 /* Eventos del puntero (mouse, lápiz y táctil): dibujar, mover, seleccionar, borrar, colocar sellos. */
-import { HL_WIDTHS, WIDTHS } from '../core/constants.js';
+import { HL_WIDTHS, ST, WIDTHS } from '../core/constants.js';
 import { align, cur, gesture, L, MK, RT, S, sel, spaceDown, stateVars, tool, uid, undoStack, view } from '../core/state.js';
 import { baseW, clampZ, dist, mid, normAng, rectPts, s2w, snapAngle, toLocal, toWorld, w2s } from '../core/geometry.js';
 import { cv, dirty } from '../canvas/render.js';
@@ -225,6 +225,7 @@ export function placeSeal(w, st, noUndo) {
   const fw = S.numPerFloor && S.floors.length ? floorAtWorld(w) : null;
   if (fw) n = 1 + Math.max(0, ...S.marks.filter(x => x.type === 'seal' && sealFloor(x) === fw).map(x => x.n));
   const m = {id:uid(), type:'seal', layer:l.id, fl, pts:[toLocal(pl, w)], st: st || S.sealType, loc: S.sealLoc || 'pared', n, note:'', w:0};
+  { const cn = (ST[m.st]?.name || '').trim(); if (/^[øØ⌀]\s*\d/.test(cn)) m.diam = cn; } // categoría de diámetro: el sello lleva ese diámetro
   S.marks.push(m);
   if (!noUndo) changed();
   return m;
