@@ -15,6 +15,7 @@ import { commitShared, injectShared } from './shared.js';
 import { renderProject } from '../home/home.js';
 import { aPickerHtml, arqLevelOptions, normEntries, parseALevel, readAPicker, setViewLevel, syncLevelFloors, wireAPicker } from '../plans/arqlevels.js';
 import { clearExtras, extraKeys, setupExtras } from '../plans/extraA.js';
+import { syncSealDiams } from '../panels/sellos.js';
 import { alignPending } from '../plans/floors.js';
 
 /* --- abrir hojas --- */
@@ -44,6 +45,7 @@ export async function openSheet(id, opt = {}) {
   if (P.active !== id) return;
   if (syncLevelFloors(sh) && S.floors.some(f => f.src)) toast('Se crearon las plantas de los niveles elegidos. Revise en Planos que cada una calce con el plano B.');
   renderAll(); fit(); save(); needVecInBackground(); trimInactive();
+  if (sh.kind === 'pair') syncSealDiams();
   if (S.floors.some(f => f.pending)) { await alignPending(); if (P.active === id) { renderAll(); fit(); save(); } }
 }
 

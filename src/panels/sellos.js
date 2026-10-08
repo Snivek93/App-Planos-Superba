@@ -1,8 +1,8 @@
 /* Pestaña Sellos: resumen, lista, categorías, numeración y cruces. */
 import { $, esc, nextCatColor, PEND, ST, txtOn } from '../core/constants.js';
 import { ICON } from '../ui/icons.js';
-import { L, MK, P, S, sel, tool, uid, undoStack, view } from '../core/state.js';
-import { baseW, dist, rectPts, segInter, toWorld } from '../core/geometry.js';
+import { L, MK, P, RT, S, sel, tool, uid, undoStack, view } from '../core/state.js';
+import { baseW, dist, rectPts, segInter, toLocal, toWorld } from '../core/geometry.js';
 import { dirty } from '../canvas/render.js';
 import { sealFloor } from '../canvas/tables.js';
 import { renderOpts, setTool } from '../editor/tools.js';
@@ -18,7 +18,7 @@ import { exportQuant, floorLevels, floorMult, joinY, LOC_NAME, locOf, sealWeight
 import { catPropsDialog, catSummary } from '../export/penetrante.js';
 import { fsDialog } from '../export/firestop.js';
 import { floorById, frameOf } from '../plans/floors.js';
-import { diamLabel } from '../detect/vector.js';
+import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
 
 /* ---------- panel: sellos ---------- */
@@ -57,6 +57,37 @@ export function setSealCat(m, st) {
   const n = ST[st]?.name;
   if (isDiamName(n) && m.diam !== n.trim()) setSealDiam(m, n.trim());
   m.review = m.review && !isDiamName(n) ? m.review : false;
+}
+/* Sello puesto a mano (o por cruces de capas): si no tiene diámetro, se toma del rótulo de la tubería más
+   cercano en el plano B (ø13 mm, Ø 100…), igual que en la detección automática. */
+export async function autoDiam(m, w, quiet) {
+  try {
+    if (!m || m.diam || !RT.B || !RT.B.isPdf || !RT.B.bmp || S.auto.diam === false) return;
+    const labels = await ensureLabels('B'), lp = toLocal(S.plans.B, w);
+    let best = 110, d = null;
+    for (const lb of labels) { const dd = Math.hypot(lb.x - lp[0], lb.y - lp[1]); if (dd < best) { best = dd; d = lb.d; } }
+    if (!d || m.diam || !S.marks.includes(m)) return;
+    setSealDiam(m, d);
+    if (S.auto.catMode === 'diam' && m.st === 'pend') m.st = catForName(d);
+    if (!quiet) { save(); renderSeals(); renderOpts(); dirty(); }
+    return true;
+  } catch (e) { /* sin texto legible en el PDF: queda sin diámetro */ }
+}
+/* Al abrir un plano: los sellos de una categoría de diámetro llevan ese diámetro, y a los que no tienen
+   diámetro se les busca el rótulo de la tubería más cercano. Así la etiqueta junto al sello siempre está al día. */
+export async function syncSealDiams() {
+  let ch = 0;
+  for (const m of S.marks) {
+    if (m.type !== 'seal') continue;
+    const n = (ST[m.st]?.name || '').trim();
+    if (isDiamName(n) && m.diam !== n) { setSealDiam(m, n); ch++; }
+  }
+  if (ch) { save(); renderSeals(); dirty(); }
+  const sin = S.marks.filter(m => m.type === 'seal' && !m.diam);
+  if (!sin.length || !RT.B || !RT.B.isPdf || S.auto.diam === false) return;
+  const S0 = S; let n = 0;
+  for (const m of sin) if (await autoDiam(m, toWorld(frameOf(m), m.pts[0]), true)) n++;
+  if (n && S === S0) { save(); renderSeals(); renderOpts(); dirty(); }
 }
 /* al renombrar una categoría de diámetro, los sellos que llevaban ese diámetro se actualizan en todo el proyecto */
 function renameDiamCat(id, oldName, newName) {
@@ -190,7 +221,7 @@ export function detectCrossings() {
     if (o.x1 < f.x0 || o.x0 > f.x1 || o.y1 < f.y0 || o.y0 > f.y1) continue;
     const q = segInter(f.a, f.b, o.a, o.b); if (!q) continue;
     if (existing.some(e => dist(e, q) < tol)) continue;
-    placeSeal(q, o.st, true); existing.push(q); n++;
+    autoDiam(placeSeal(q, o.st, true), q); existing.push(q); n++;
   }
   if (!n) { undoStack.length = before; renderTop(); toast('No se encontraron cruces nuevos.'); return; }
   changed(); toast(`Se agregaron ${n} ${n === 1 ? 'sello' : 'sellos'} en los cruces.`);

@@ -1,5 +1,5 @@
 /* Eventos del puntero (mouse, lápiz y táctil): dibujar, mover, seleccionar, borrar, colocar sellos. */
-import { HL_WIDTHS, ST, WIDTHS } from '../core/constants.js';
+import { HL_WIDTHS, ST, TEXT_SIZES, WIDTHS } from '../core/constants.js';
 import { align, cur, gesture, L, MK, RT, S, sel, spaceDown, stateVars, tool, uid, undoStack, view } from '../core/state.js';
 import { baseW, clampZ, dist, mid, normAng, rectPts, s2w, snapAngle, toLocal, toWorld, w2s } from '../core/geometry.js';
 import { cv, dirty } from '../canvas/render.js';
@@ -9,7 +9,7 @@ import { activeDrawLayer, renderOpts, sealLayer, setTool } from './tools.js';
 import { alignTap } from './align.js';
 import { pushUndo } from '../core/undo.js';
 import { renderPlans } from '../panels/planos.js';
-import { highlightSealRow, updateCounts } from '../panels/sellos.js';
+import { autoDiam, highlightSealRow, updateCounts } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { aFrameAt, atOf, bFromA, floorAtWorld, floorRect, frameAt, frameOf } from '../plans/floors.js';
@@ -180,14 +180,14 @@ export function tapAction(p, e) {
   if (tool === 'seal') {
     const hit = hitTest(p, true);
     if (hit) { setTool('select'); sel.add(hit.id); renderOpts(); highlightSealRow(); dirty(); return; }
-    placeSeal(w); return;
+    autoDiam(placeSeal(w), w); return;
   }
   if (tool === 'text') {
     const l = activeDrawLayer(); if (!l) return;
     const [pl, fl] = frameAt(l, w), lp = toLocal(pl, w);
     ask({title:'Nueva nota', input:'', placeholder:'Por ejemplo: pared 2 h, revisar ducto', ok:'Agregar'}).then(t => {
       if (!t) return; pushUndo();
-      S.marks.push(Object.assign({id:uid(), type:'text', layer:l.id, fl, pts:[lp], size:baseW()*13/pl.s, text:t, w:0}, S.drawColor ? {color:S.drawColor} : {}));
+      S.marks.push(Object.assign({id:uid(), type:'text', layer:l.id, fl, pts:[lp], size:baseW()*TEXT_SIZES[S.textSize ?? 1][1]/pl.s, text:t, w:0}, S.drawColor ? {color:S.drawColor} : {}));
       changed();
     });
     return;
