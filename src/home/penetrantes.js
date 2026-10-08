@@ -63,8 +63,8 @@ export function renderPenTable() {
   const perLv = new Map();
   for (const r of rows0) for (const v of (penF.lv ? [penF.lv] : r.lv)) perLv.set(v, (perLv.get(v) || 0) + 1);
   const chips = [...perLv].sort((a, b) => lvSort(a[0]) - lvSort(b[0]) || natCmp(a[0], b[0])).map(([v, n]) => `<span class="hchip">${esc(lvTxt(v))} <b>${n}</b></span>`).join('');
-  const catCell = r => `<button class="cat" data-pa="pcat" data-st="${r.st}" title="Editar tipo de penetrante, geometría y espacio anular de esta categoría"><span class="dot${r.loc === 'losa' ? ' sq' : ''}" style="--c:${r.color}"></span>${esc(r.cat)}</button>`;
-  const penCell = r => r.hasProps ? esc(r.pen) : `<button class="linkbtn undef" data-pa="pcat" data-st="${r.st}">Definir…</button>`;
+  const catCell = r => `<button class="cat" data-pa="pcat" data-st="${r.st}" data-sh="${r.sh.id}" title="Editar tipo de penetrante, geometría y espacio anular de esta categoría"><span class="dot${r.loc === 'losa' ? ' sq' : ''}" style="--c:${r.color}"></span>${esc(r.cat)}</button>`;
+  const penCell = r => r.hasProps ? esc(r.pen) : `<button class="linkbtn undef" data-pa="pcat" data-st="${r.st}" data-sh="${r.sh.id}">Definir…</button>`;
   let cols, rows;
   if (penF.mode === 'sum') {
     const map = new Map();

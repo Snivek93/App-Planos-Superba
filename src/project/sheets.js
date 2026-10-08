@@ -9,7 +9,7 @@ import { save } from '../core/storage.js';
 import { ask, closePanel, renderAll, renderTop, toast } from '../ui/app.js';
 import { floorsVars } from '../plans/floors.js';
 import { needVecInBackground, pathCache } from '../detect/vector.js';
-import { arqState, blankState, curSheet, hideHome, homeOn, isPdfFile, isPlanFile, normState, pid, RT_BLANK, secLabel, sheetsOf, showHome, stripExt, subById } from './model.js';
+import { adoptCats, arqState, blankState, catKey, curSheet, hideHome, homeOn, isPdfFile, isPlanFile, normState, pid, RT_BLANK, secLabel, sheetsOf, showHome, stripExt, subById } from './model.js';
 import { gcFiles, loadPlanFile, storeFile, trimInactive } from './files.js';
 import { commitShared, injectShared } from './shared.js';
 import { renderProject } from '../home/home.js';
@@ -186,7 +186,7 @@ export async function sheetDialog(id) {
   if (v.act === 'del') return deleteSheet(id);
   if (v.name) sh.name = v.name;
   if (pair) {
-    const [s, u] = v.loc.split('|'); sh.sec = s; sh.sub = u || null;
+    const [s, u] = v.loc.split('|'); const ok0 = catKey(sh); sh.sec = s; sh.sub = u || null; adoptCats(sh, ok0);
     const key = x => JSON.stringify([x.a, x.lv, (x.more || []).map(m => [m.aSheet, m.aLevels])]);
     if (v.pick && key(v.pick) !== key({a: sh.aSheet, lv: sh.aLevels || [], more: sh.aMore || []})) await setPairA(sh, v.pick.a, v.pick.lv, v.pick.more);
   }

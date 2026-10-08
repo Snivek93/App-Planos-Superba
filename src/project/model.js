@@ -71,12 +71,87 @@ export function newProjectData() {
     sheets:{}, files:{}};
 }
 
+/* ---------- categorías de sellos por juego de planos ----------
+   Cada juego (subsección, por ejemplo Mecánico › Agua potable o Mecánico › Sanitario; o la sección si el plano
+   no está en una subsección) tiene sus propias categorías: borrar o cambiar una no afecta los otros juegos.
+   Los datos de Firestop de cada categoría (P.fsx.cats) siguen guardados por id, y los id no se repiten entre juegos. */
+export function catKey(sh) { return !sh ? '' : sh.kind === 'arq' ? 'arq' : (sh.sec || '') + '|' + (sh.sub || ''); }
+const stSheet = new WeakMap();
+function sheetOfState(st) {
+  if (!P || !P.sheets) return null;
+  const c = stSheet.get(st); if (c && c.state === st && P.sheets[c.id] === c) return c;
+  const sh = Object.values(P.sheets).find(x => x.state === st) || null;
+  if (sh) stSheet.set(st, sh);
+  return sh;
+}
+function freshDefaults() { return DEFAULT_SEAL_TYPES.map(t => t.id === 'pend' ? {...t} : {...t, id: 'c' + 'm' + (++P.uid)}); }
+export function catsForKey(key) {
+  if (!P.catSets) P.catSets = {};
+  if (!P.catSets[key]) P.catSets[key] = freshDefaults();
+  return P.catSets[key];
+}
+function catsOf(st) {
+  if (!P) return st._cats || (st._cats = DEFAULT_SEAL_TYPES.map(t => ({...t})));
+  const sh = sheetOfState(st);
+  if (!sh) return P.sealTypes || [];
+  return catsForKey(catKey(sh));
+}
+/* plano que pasa a otro juego: sus sellos se quedan con categorías equivalentes (mismo nombre) o se copian */
+export function adoptCats(sh, oldKey) {
+  if (!P || !P.catSets || catKey(sh) === oldKey) return;
+  const from = P.catSets[oldKey] || [], to = catsForKey(catKey(sh)), map = {};
+  const need = new Set([...sh.state.marks.filter(m => m.type === 'seal').map(m => m.st), ...sh.state.layers.map(l => l.st).filter(Boolean)]);
+  for (const id of need) {
+    if (to.some(t => t.id === id)) continue;
+    const t = from.find(x => x.id === id); if (!t) continue;
+    const same = to.find(x => x.name.trim().toLowerCase() === t.name.trim().toLowerCase());
+    if (same) { map[id] = same.id; continue; }
+    const nt = {...t, id: 'c' + 'm' + (++P.uid)};
+    if (P.fsx && P.fsx.cats && P.fsx.cats[id]) P.fsx.cats[nt.id] = clone(P.fsx.cats[id]);
+    const pi = to.findIndex(x => x.id === 'pend'); pi >= 0 ? to.splice(pi, 0, nt) : to.push(nt);
+    map[id] = nt.id;
+  }
+  for (const m of sh.state.marks) if (m.type === 'seal' && map[m.st]) m.st = map[m.st];
+  for (const l of sh.state.layers) if (map[l.st]) l.st = map[l.st];
+}
+/* proyectos guardados con categorías de todo el proyecto: se reparten por juego, con las que usa cada uno */
+export function migrateCats(force) {
+  if (P.catSets && !force) return;
+  P.catSets = {};
+  const all = P.sealTypes || [], owner = {};
+  const groups = new Map();
+  for (const sh of Object.values(P.sheets)) { const k = catKey(sh); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sh); }
+  for (const [k, shs] of groups) {
+    const used = new Set();
+    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal') used.add(m.st); for (const l of sh.state.layers) if (l.st) used.add(l.st); }
+    const list = [], map = {};
+    for (const t of all) {
+      if (t.id === 'pend' || !used.has(t.id)) continue;
+      if (!owner[t.id]) { owner[t.id] = k; list.push({...t}); continue; }
+      const nt = {...t, id: 'c' + 'm' + (++P.uid)}; // la usa otro juego también: copia propia
+      if (P.fsx && P.fsx.cats && P.fsx.cats[t.id]) P.fsx.cats[nt.id] = clone(P.fsx.cats[t.id]);
+      list.push(nt); map[t.id] = nt.id;
+    }
+    list.push({...(all.find(t => t.id === 'pend') || DEFAULT_SEAL_TYPES.find(t => t.id === 'pend'))});
+    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal' && map[m.st]) m.st = map[m.st]; for (const l of sh.state.layers) if (map[l.st]) l.st = map[l.st]; }
+    P.catSets[k] = list;
+  }
+}
+
 export function bindShared(st) {
   for (const k of ['sealTypes', 'fsx']) {
     const d = Object.getOwnPropertyDescriptor(st, k);
     if (d && !d.get) delete st[k];
-    if (!d || !d.get) Object.defineProperty(st, k, {get() { return P[k]; }, set(v) { P[k] = v; }, enumerable:false, configurable:true});
   }
+  Object.defineProperty(st, 'fsx', {get() { return P ? P.fsx : null; }, set(v) { if (P) P.fsx = v; }, enumerable:false, configurable:true});
+  Object.defineProperty(st, 'sealTypes', {
+    get() { return catsOf(this); },
+    set(v) {
+      if (!P) { this._cats = v; return; }
+      const sh = sheetOfState(this);
+      if (sh) { if (!P.catSets) P.catSets = {}; P.catSets[catKey(sh)] = v; } else P.sealTypes = v;
+    },
+    enumerable:false, configurable:true});
   return st;
 }
 
@@ -114,6 +189,7 @@ export function hydrate(o) {
   if (!P.sections.find(s => s.id === 'arq')) P.sections.unshift({id:'arq', name:'Arquitectónicos', kind:'arq', subs:[]});
   P.sheets = P.sheets || {}; P.files = P.files || {}; P.uid = P.uid || 1000;
   for (const sh of Object.values(P.sheets)) sh.state = normState(sh.state);
+  migrateCats();
   // numeración sin huecos también en planos marcados con versiones anteriores
   for (const sh of Object.values(P.sheets)) withState(sh.state, compactSealNumbers);
   if (P.active && !P.sheets[P.active]) P.active = null;

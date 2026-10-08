@@ -7,7 +7,7 @@ import { dataURLtoBlob } from '../export/pdf.js';
 import { DB, persistNow } from '../core/storage.js';
 import { ask, renderAll, toast } from '../ui/app.js';
 import { zipStore } from '../export/firestop.js';
-import { arqState, blankState, clone, guessType, hydrate, modelVars, newProjectData, normState, pid, RT_BLANK, showHome, stripExt } from './model.js';
+import { arqState, blankState, clone, guessType, hydrate, migrateCats, modelVars, newProjectData, normState, pid, RT_BLANK, showHome, stripExt } from './model.js';
 import { rtCache, storeFile, usedFiles } from './files.js';
 import { commitShared, isSharedLayer } from './shared.js';
 import { clearExtras } from '../plans/extraA.js';
@@ -78,6 +78,7 @@ export async function migrateLegacy(o, recA, recB) {
     P.sheets[id] = {id, kind:'pair', name:stripExt(recB.name), sec:sec.id, sub:null, aSheet:arqId, state:pairSt, order:2};
     P.active = id;
   } else if (arqId) P.active = arqId;
+  migrateCats(true); // las categorías del archivo viejo pasan a los juegos de planos
 }
 
 export async function openProject(file) {

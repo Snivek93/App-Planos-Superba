@@ -5,7 +5,7 @@ import { renderPlans } from '../panels/planos.js';
 import { renderSeals } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { renderTop, toast } from '../ui/app.js';
-import { isPlanFile, secById, secLabel, sheetsOf, subById } from '../project/model.js';
+import { adoptCats, catKey, isPlanFile, secById, secLabel, sheetsOf, subById } from '../project/model.js';
 import { addArqFiles, addPairFiles } from '../project/sheets.js';
 import { renderProject, tpj } from './home.js';
 import { penF, renderPenTable } from './penetrantes.js';
@@ -30,7 +30,9 @@ export function showHint(t) { const h = $('#dropHint'); h.textContent = t; h.hid
 export function moveSheet(id, sec, sub) {
   const sh = P.sheets[id]; if (!sh || sh.kind !== 'pair') return;
   if (sh.sec === sec && (sh.sub || null) === (sub || null)) return;
+  const ok0 = catKey(sh);
   sh.sec = sec; sh.sub = sub || null;
+  adoptCats(sh, ok0);
   let note = '';
   const u = sub ? subById(sec, sub) : null;
   if (u && !!u.below !== !!sh.state.below) {

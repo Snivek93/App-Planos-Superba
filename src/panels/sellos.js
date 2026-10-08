@@ -20,7 +20,9 @@ import { fsDialog } from '../export/firestop.js';
 import { floorById, frameOf } from '../plans/floors.js';
 import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
-import { curSheet } from '../project/model.js';
+import { catKey, curSheet, secById, subById, withState } from '../project/model.js';
+/* nombre del juego de planos (subsección o sección) */
+function setName(sh) { if (!sh) return ''; if (sh.kind === 'arq') return 'los arquitectónicos'; const s = secById(sh.sec), u = sh.sub ? subById(sh.sec, sh.sub) : null; return (s ? s.name : '') + (u ? ' › ' + u.name : ''); }
 
 /* ---------- panel: sellos ---------- */
 export function sealsSorted() { return S.marks.filter(m => m.type === 'seal').sort((a, b) => a.n - b.n); }
@@ -145,7 +147,7 @@ export function renderSeals() {
       <p class="help" style="margin-top:4px">Agrega al plano una tabla con la leyenda de colores y la cantidad de sellos por categoría. Se actualiza sola.${hasF ? ' Si la pone dentro de una planta, cuenta solo los sellos de esa planta.' : ''}</p>
       <div class="btnrow"><button class="btn primary" data-act="table">Insertar tabla</button><button class="btn" data-act="pdf">Descargar PDF</button></div></div>
     <div class="sect"><header><h3>Categorías</h3><button class="btn" data-act="addCat">Nueva</button></header>
-      <p class="help" style="margin-top:4px">Por ejemplo PVC 150 mm, PVC 100 mm, EMT 25 mm. Cada una con su color. <b>Son de todo el proyecto</b>: las usan todos los planos, así que borrar una afecta los sellos de los demás planos.${filt ? ' Las cantidades son de la planta elegida.' : ''}</p>
+      <p class="help" style="margin-top:4px">Por ejemplo PVC 150 mm, PVC 100 mm, EMT 25 mm. Cada una con su color. ${curSheet() ? `Son de <b>${esc(setName(curSheet()))}</b>: las comparten los planos de ese juego; los otros juegos tienen las suyas.` : ''}${filt ? ' Las cantidades son de la planta elegida.' : ''}</p>
       <ul class="cats">${S.sealTypes.map(t => {
         const c = seals.filter(x => x.st === t.id).length;
         return `<li data-cat="${t.id}"><input type="color" data-act="catColor" value="${t.color}" aria-label="Color de ${esc(t.name)}">
@@ -183,10 +185,10 @@ export async function addCategory(selectIt) {
 
 export async function deleteCategory(id) {
   const t = S.sealTypes.find(x => x.id === id); if (!t || id === 'pend') return;
-  // las categorías son de todo el proyecto: se cuentan los sellos de todos los planos, no solo del abierto
-  const cur = curSheet();
+  // las categorías son del juego de planos (por ejemplo Mecánico › Agua potable): se cuentan los sellos de todos sus planos
+  const cur = curSheet(), ck = catKey(cur);
   const uses = [];
-  if (P) for (const sh of Object.values(P.sheets)) {
+  if (P) for (const sh of Object.values(P.sheets).filter(x => catKey(x) === ck)) {
     const st = sh === cur ? S : sh.state;
     const k = st.marks.filter(m => m.type === 'seal' && m.st === id).length;
     if (k) uses.push([sh === cur ? 'este plano' : sh.name, k]);
@@ -195,12 +197,12 @@ export async function deleteCategory(id) {
   if (n) {
     const others = uses.filter(([nm]) => nm !== 'este plano');
     const list = uses.slice(0, 8).map(([nm, k]) => `<li>${esc(nm)}: <b>${k}</b></li>`).join('') + (uses.length > 8 ? `<li>y ${uses.length - 8} planos más</li>` : '');
-    const ok = await ask({title:'Eliminar categoría', html:`<p>"${esc(t.name)}" es una categoría de todo el proyecto y la usan <b>${n}</b> ${n === 1 ? 'sello' : 'sellos'}${others.length ? ' en otros planos también' : ''}:</p><ul>${list}</ul><p>Si la elimina, todos esos sellos pasan a "Por definir".</p>`, buttons:[{label:'Cancelar', value:false, primary:true}, {label:'Eliminar en todo el proyecto', value:true, danger:true}]});
+    const ok = await ask({title:'Eliminar categoría', html:`<p>"${esc(t.name)}" es una categoría de ${esc(setName(cur))} y la usan <b>${n}</b> ${n === 1 ? 'sello' : 'sellos'}${others.length ? ', también en otros planos' : ''}:</p><ul>${list}</ul><p>Si la elimina, todos esos sellos pasan a "Por definir".</p>`, buttons:[{label:'Cancelar', value:false, primary:true}, {label:others.length ? 'Eliminar en todos esos planos' : 'Eliminar', value:true, danger:true}]});
     if (!ok) return;
   }
   pushUndo();
   if (!S.sealTypes.some(x => x.id === 'pend')) S.sealTypes.push({...PEND});
-  const states = P ? [...new Set([S, ...Object.values(P.sheets).map(x => x.state)])] : [S];
+  const states = P ? [...new Set([S, ...Object.values(P.sheets).filter(x => catKey(x) === ck).map(x => x.state)])] : [S];
   for (const st of states) {
     st.marks.forEach(m => { if (m.type === 'seal' && m.st === id) m.st = 'pend'; if (m.type === 'table' && m.cats) m.cats = m.cats.filter(c => c !== id); });
     st.layers.forEach(l => { if (l.st === id) l.st = 'pend'; });
@@ -282,7 +284,7 @@ export function init() {
     if (a === 'pendDiam') {
       pushUndo(); let n = 0, np = 0;
       const cur = curSheet(), states = P ? [...new Set([S, ...Object.values(P.sheets).filter(sh => sh !== cur).map(sh => sh.state)])] : [S];
-      for (const st of states) { let k = 0; for (const m of st.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(m.diam)); k++; } if (k) { n += k; np++; } }
+      for (const st of states) withState(st, () => { let k = 0; for (const m of st.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(m.diam)); k++; } if (k) { n += k; np++; } });
       changed(); renderSeals(); toast(`${n} ${n === 1 ? 'sello asignado' : 'sellos asignados'} a la categoría de su diámetro${np > 1 ? ` en ${np} planos` : ''}.`); return;
     }
     if (a === 'fillDiam') { fillMissingDiams(); return; }

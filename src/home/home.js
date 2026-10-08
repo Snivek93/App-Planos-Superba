@@ -152,7 +152,7 @@ export function init() {
     else if (a === 'hview') { penetrantesVars.homeView = b.dataset.v; renderProject(); }
     else if (a === 'pmode') { penF.mode = b.dataset.v; renderProject(); }
     else if (a === 'psort') { const k = b.dataset.k; penetrantesVars.penSort = penSort.k === k ? {k, d:-penSort.d} : {k, d:1}; renderPenTable(); }
-    else if (a === 'pcat') { await catPropsDialog(b.dataset.st); renderProject(); }
+    else if (a === 'pcat') { const sh = P.sheets[b.dataset.sh]; await (sh ? withState(sh.state, () => catPropsDialog(b.dataset.st)) : catPropsDialog(b.dataset.st)); renderProject(); }
     else if (a === 'pgo') goSeal(b.dataset.sh, b.dataset.m);
     else if (a === 'pclear') { penetrantesVars.penF = {...penF, sec:'', lv:'', loc:'', q:''}; renderProject(); }
     else if (a === 'rename') startRename(sheetEl);
