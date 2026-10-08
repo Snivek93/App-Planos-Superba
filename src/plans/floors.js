@@ -3,7 +3,8 @@ import { esc, PDF_UNIT } from '../core/constants.js';
 import { ICON } from '../ui/icons.js';
 import { L, P, RT, S, tool, uid, view } from '../core/state.js';
 import { clampZ, toLocal, toWorld } from '../core/geometry.js';
-import { CH, CW, dirty } from '../canvas/render.js';
+import { CH, CW, dirty, EXPORT } from '../canvas/render.js';
+import { altOn } from './altA.js';
 import { setTool } from '../editor/tools.js';
 import { reanchor } from '../editor/pointer.js';
 import { fit } from '../canvas/view.js';
@@ -70,6 +71,10 @@ export function floorAtWorld(w) {
 
 export function planFrames(k) {
   if (k === 'B') return [[S.plans.B, null, null]]; // el plano B siempre completo
+  if (isAKey(k) && S.floors.length && solo !== 'A' && !EXPORT && altOn()) {
+    // vista "Losa": debajo de cada planta se ve el arquitectónico de su nivel de losa
+    return S.floors.filter(f => f.alt && f.alt.at && akOf(f.alt) === k).map(f => [f.alt.at, f.alt.a, f]);
+  }
   if (isAKey(k) && S.floors.length && solo !== 'A') {
     // con plantas: el A se ve solo en sus niveles, cada uno debajo de su zona del B
     return S.floors.filter(f => akOf(f) === k).map(f => [atOf(f), f.a, f]);
@@ -338,6 +343,7 @@ export function floorsHtml() {
       <div class="frow"><input data-act="fname" value="${esc(f.name)}" aria-label="Nombre de la planta"${f.src ? ' readonly title="Se cambia en el arquitectónico"' : ''}>${st(f)}</div>
       <div class="frow" style="margin-top:6px"><span class="small muted" style="white-space:nowrap">Niveles que representa</span><input data-act="flevels" value="${esc(f.levels ?? '')}" placeholder="Ej.: 7, 8 o 7-10" aria-label="Niveles que representa la planta"${f.src ? ` title="En este plano puede indicar más niveles que el del arquitectónico (planta típica). Vacío: vuelve a ${esc(f.lvArq ?? f.levels ?? '')}."` : ''}><b class="fmult" title="Multiplicador">×${floorMult(f)}</b></div>
       ${floorLocHint(f) ? `<div class="small" style="color:var(--tinta-2);margin-top:4px">${esc(floorLocHint(f))}</div>` : ''}
+      ${f.alt ? `<div class="small muted" style="margin-top:4px">A de losa: ${esc(f.alt.name)}${f.alt.levels ? ` (nivel ${esc(f.alt.levels)})` : ''} · ${f.alt.how === 'ejes' ? 'alineado por ejes' : f.alt.how === 'centro' ? 'centrado (sin ejes comunes)' : 'se alinea al verlo'} <button class="linkbtn" data-act="fAltAxes">Realinear</button></div>` : ''}
       ${f.src && f.lvOwn ? `<div class="small muted">En el arquitectónico es ${esc(f.lvArq || '')}; deje vacío para volver a ese.</div>` : ''}
       <label class="chk small" style="margin:6px 0 0"><input type="checkbox" data-act="fbelow"${(f.below ?? S.below) ? ' checked' : ''}> Tuberías bajo losa (paredes en el nivel inferior)</label>
       ${f.info ? `<div class="small muted">${esc(f.info)}</div>` : ''}

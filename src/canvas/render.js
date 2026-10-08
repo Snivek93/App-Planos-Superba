@@ -5,6 +5,7 @@ import { dist, M, rectPts, s2w, toLocal, toWorld, w2s } from '../core/geometry.j
 import { drawTable } from './tables.js';
 import { locOf } from '../core/levels.js';
 import { floorRectWorld, frameOf, planFrames, solo } from '../plans/floors.js';
+import { altOn } from '../plans/altA.js';
 import { drawAutoHighlights, drawKnockout, FIRE_HL, typicalWallW } from '../detect/vector.js';
 import { wallFixLintels, wallFixMasks, wallFixPreview, wfDraft, wfMode } from '../detect/wallfix.js';
 import { drawLevelRects } from '../plans/arqlevels.js';
@@ -84,7 +85,7 @@ export function draw() {
     const r = floorRectWorld(f), a = w2s(r[0], r[1]), b = w2s(r[2], r[3]);
     ctx.strokeStyle = 'rgba(122,76,194,.75)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
     ctx.strokeRect(a[0], a[1], b[0]-a[0], b[1]-a[1]); ctx.setLineDash([]);
-    ctx.font = '600 12px Barlow, sans-serif'; ctx.fillStyle = '#7A4CC2'; ctx.fillText(f.name, a[0] + 6, a[1] + 15);
+    ctx.font = '600 12px Barlow, sans-serif'; ctx.fillStyle = '#7A4CC2'; ctx.fillText(f.name + (f.alt && altOn() ? `  ·  A de losa: ${f.alt.name}` : ''), a[0] + 6, a[1] + 15);
   }
   if (S.auto.zone && !S.floors.length && !solo && !(gesture && gesture.kind === 'zone')) {
     const z = S.auto.zone, a = w2s(z[0], z[1]), b = w2s(z[2], z[3]);

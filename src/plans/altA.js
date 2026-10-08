@@ -45,7 +45,7 @@ export function syncAltFloors(sh) {
 export async function prepareAlt() {
   const sh = curSheet(); if (!hasAlt(sh)) return;
   syncAltFloors(sh);
-  const need = extraKeys.filter(k => altOnly.has(k) && !RT[k].bmp && S.plans[k].fileId && S.floors.some(f => f.alt && akOf(f.alt) === k));
+  const need = extraKeys.filter(k => altOnly.has(k) && RT[k] && S.plans[k] && !RT[k].bmp && S.plans[k].fileId && S.floors.some(f => f.alt && akOf(f.alt) === k));
   await Promise.all(need.map(k => { RT[k].loading = true; return loadPlanFile(k, S.plans[k].fileId, S.plans[k].page); }));
   if (curSheet() !== sh) return;
   for (const f of S.floors) {

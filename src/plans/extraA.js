@@ -56,7 +56,7 @@ export const altOnly = new Set();
 
 /* reglas de paredes cortafuego del arquitectónico de un plano A adicional, como reglas de ese plano */
 export function extraFireRules(k) {
-  const id = sheetOf[k], arq = id && P.sheets[id]; if (!arq || altOnly.has(k)) return [];
+  const id = sheetOf[k], arq = id && P.sheets[id]; if (!arq) return [];
   return (arq.state.auto.fire || []).map(r => ({...r, id: k + ':' + r.id, plan: k}));
 }
 /* ajustes a mano (Afinar paredes) del arquitectónico de un plano A adicional */
