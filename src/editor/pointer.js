@@ -221,6 +221,9 @@ export function finishPoly() {
 export function placeSeal(w, st, noUndo) {
   const l = sealLayer(), [pl, fl] = frameAt(l, w);
   if (!noUndo) pushUndo();
+  // plano con plantas que aún no tiene sellos: de base se numera desde 1 en cada planta
+  // (los planos que ya tienen sellos conservan su numeración; se cambia con "Renumerar")
+  if (S.numPerFloor === undefined && S.floors.length && !S.marks.some(x => x.type === 'seal')) S.numPerFloor = true;
   let n = ++S.seq;
   const fw = S.numPerFloor && S.floors.length ? floorAtWorld(w) : null;
   if (fw) n = 1 + Math.max(0, ...S.marks.filter(x => x.type === 'seal' && sealFloor(x) === fw).map(x => x.n));
