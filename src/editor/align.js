@@ -9,12 +9,12 @@ import { changed, closePanel, toast } from '../ui/app.js';
 import { atOf, bFromA, fitRect, floorById, floorRectWorld } from '../plans/floors.js';
 
 /* ---------- alineación por 2 puntos ---------- */
-export function startAlign(floorId) {
+export function startAlign(floorId, alt) {
   if (!RT.A.bmp || !RT.B.bmp) { toast('Suba ambos planos para alinearlos.'); return; }
   if (!floorId && S.floors.length) { toast('Con plantas definidas, la alineación se hace por planta en la pestaña Planos.'); return; }
   if (!floorId && S.plans.B.locked) { toast('Desbloquee el plano B para alinearlo.'); return; }
   closePanel();
-  setTool('align'); stateVars.align = {pts:[], floor: floorId || null};
+  setTool('align'); stateVars.align = {pts:[], floor: floorId || null, alt: !!alt};
   if (floorId) { const fl = floorById(floorId); if (fl) fitRect(floorRectWorld(fl)); }
   renderOpts(); dirty();
 }
@@ -23,6 +23,17 @@ export function alignTap(w) {
   align.pts.push(w);
   if (align.pts.length < 4) { renderOpts(); dirty(); return; }
   const fl = align.floor ? floorById(align.floor) : null;
+  if (fl && align.alt && fl.alt && fl.alt.at) { // nivel de losa (vista "A: losa")
+    const at = fl.alt.at, a1 = toLocal(at, align.pts[1]), a2 = toLocal(at, align.pts[3]), w1 = align.pts[0], w2 = align.pts[2];
+    const va = [a2[0]-a1[0], a2[1]-a1[1]], vw = [w2[0]-w1[0], w2[1]-w1[1]];
+    if (Math.hypot(...va) < 1e-6 || Math.hypot(...vw) < 1e-6) { toast('Los dos puntos están demasiado cerca. Intente de nuevo.'); align.pts = []; renderOpts(); dirty(); return; }
+    pushUndo();
+    const s = Math.hypot(...vw)/Math.hypot(...va), r = normAng(Math.atan2(vw[1], vw[0]) - Math.atan2(va[1], va[0])), c = Math.cos(r)*s, sn = Math.sin(r)*s;
+    fl.alt.at = {x: w1[0] - (c*a1[0] - sn*a1[1]), y: w1[1] - (sn*a1[0] + c*a1[1]), s, r}; fl.alt.how = 'manual';
+    stateVars.align = null; setTool('select'); changed(); renderPlans();
+    toast(`Losa de "${fl.name}" (${fl.alt.name}) alineada con 2 puntos.`);
+    return;
+  }
   if (fl) { // con plantas el B queda fijo: se ubica el nivel del A para que sus puntos caigan sobre los del B
     const at = atOf(fl), a1 = toLocal(at, align.pts[1]), a2 = toLocal(at, align.pts[3]), w1 = align.pts[0], w2 = align.pts[2];
     const va = [a2[0]-a1[0], a2[1]-a1[1]], vw = [w2[0]-w1[0], w2[1]-w1[1]];

@@ -13,6 +13,7 @@ import { autoDiam, highlightSealRow, updateCounts } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { aFrameAt, atOf, bFromA, floorAtWorld, floorRect, frameAt, frameOf } from '../plans/floors.js';
+import { altOn } from '../plans/altA.js';
 import { pickAt } from '../detect/pick.js';
 import { renderAuto } from '../panels/deteccion.js';
 import { wallFixAddLine, wallFixAddTap, wallFixRect, wallFixTap, wfMode } from '../detect/wallfix.js';
@@ -78,8 +79,9 @@ export function down(p, e) {
       // con plantas el B es la base: se mueve el nivel del A que está debajo
       const fl = S.floors.length ? (floorAtWorld(w) || aFrameAt(w).f || (S.floors.length === 1 ? S.floors[0] : null)) : null;
       if (S.floors.length && !fl) { toast('Toque dentro de una planta para moverla.'); return; }
-      const tgt = fl ? atOf(fl) : pb;
-      pushUndo(); stateVars.gesture = {kind:'moveB', w0:w, x0:tgt.x, y0:tgt.y, tgt, fl}; break;
+      const alt = !!(fl && fl.alt && fl.alt.at && altOn()); // vista "A: losa": se mueve el nivel de losa
+      const tgt = alt ? fl.alt.at : fl ? atOf(fl) : pb;
+      pushUndo(); stateVars.gesture = {kind:'moveB', w0:w, x0:tgt.x, y0:tgt.y, tgt, fl, alt}; break;
     }
   }
 }
@@ -157,7 +159,7 @@ export function up(p, e) {
     }
     case 'move': if (g.moved) changed(); break;
     case 'erase': if (g.pushed) changed(); break;
-    case 'moveB': if (g.fl) { g.fl.how = 'manual'; g.fl.info = 'Ajustada a mano'; delete g.fl.t; if (g.fl.src) bFromA(g.fl); } changed(); renderPlans(); break;
+    case 'moveB': if (g.alt) g.fl.alt.how = 'manual'; else if (g.fl) { g.fl.how = 'manual'; g.fl.info = 'Ajustada a mano'; delete g.fl.t; if (g.fl.src) bFromA(g.fl); } changed(); renderPlans(); break;
     case 'wallfix': {
       if (wfMode === 'agregar') { if (dist(g.start, g.end) < 8) wallFixAddTap(s2w(...g.end), 9/view.z); else wallFixAddLine(s2w(...g.start), s2w(...g.end)); }
       else if (dist(g.start, g.end) < 8) wallFixTap(s2w(...g.end), 9/view.z);

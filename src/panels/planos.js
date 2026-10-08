@@ -8,7 +8,7 @@ import { pushUndo } from '../core/undo.js';
 import { loadVars, makeTint, removePlan, swapPlans } from '../plans/load.js';
 import { renderSeals } from './sellos.js';
 import { save } from '../core/storage.js';
-import { changed, closePanel, renderAll, toast } from '../ui/app.js';
+import { changed, closePanel, renderAll, renderTop, toast } from '../ui/app.js';
 import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/levels.js';
 import { prepareAlt } from '../plans/altA.js';
 import { addFloor, autoAlignFloor, deleteFloor, editFloorZoneB, fitRect, floorById, setFloorLevels, floorRectWorld, floorsHtml } from '../plans/floors.js';
@@ -85,9 +85,17 @@ export function init() {
     else if (a === 'resetB') { if (p.locked) return toast('El plano B está bloqueado.'); pushUndo(); const A = S.plans.A; p.r = 0; p.x = 0; p.y = 0; p.s = (A.w && p.w) ? (A.w*A.s)/p.w : 1; changed(); renderPlans(); }
     else if (a === 'swap') swapPlans();
     else if (a === 'addFloor') addFloor();
-    else if (a === 'fAltAxes') {
+    else if (['fAltAxes', 'fAltAlign', 'fAltMove', 'fAltView'].includes(a)) {
       const fl = floorById(b.closest('[data-floor]').dataset.floor); if (!fl || !fl.alt) return;
-      fl.alt.pending = true; prepareAlt().then(() => { save(); renderPlans(); renderAll(); });
+      (async () => {
+        // estas acciones son sobre el nivel de losa: se pasa a la vista "A: losa"
+        if (S.aView !== 'losa') { S.aView = 'losa'; renderTop(); }
+        if (a === 'fAltAxes') { pushUndo(); fl.alt.pending = true; }
+        await prepareAlt(); save(); renderPlans(); renderAll();
+        if (a === 'fAltAlign') startAlign(fl.id, true);
+        else if (a === 'fAltMove') { closePanel(); setTool('moveB'); fitRect(floorRectWorld(fl)); toast('Arrastre dentro de la planta para mover el nivel de losa.'); }
+        else if (a === 'fAltView') { closePanel(); fitRect(floorRectWorld(fl)); }
+      })();
     }
     else if (['fAxes', 'fAlign', 'fMove', 'fView', 'fDel', 'fZoneB'].includes(a)) {
       const fl = floorById(b.closest('[data-floor]').dataset.floor); if (!fl) return;
