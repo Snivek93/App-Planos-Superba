@@ -31,7 +31,15 @@ export async function pickAt(w) {
     if (af.k !== 'A') { toast('Ese nivel viene de otra lámina: sus paredes se eligen en ese arquitectónico.'); return; }
     p = af.fr;
   }
-  const lp = toLocal(p, w), tol = 9/(view.z*p.s);
+  const lp = toLocal(p, w);
+  // primero justo donde se tocó; si no hay nada (por ejemplo el centro blanco de una tubería dibujada con
+  // dos líneas), se busca un poco más lejos
+  let hits = [];
+  for (const f of [1, 2.5]) { hits = findHits(vec, lp, 9*f/(view.z*p.s)); if (hits.length) break; }
+  if (!hits.length) { toast(`No encontré líneas ni rellenos ahí en el plano ${k}. Acerque más el zoom y toque justo sobre ${target === 'fire' ? 'la pared' : 'la tubería'}.`); return; }
+  return pickChoose(vec, hits, target, k);
+}
+function findHits(vec, lp, tol) {
   const hits = [];
   for (let i = vec.shapes.length - 1; i >= 0; i--) {
     const s = vec.shapes[i], t = tol + (s.w || 0)/2;
@@ -45,7 +53,9 @@ export async function pickAt(w) {
     if (hit && !hits.some(h => h.key === s.key) && s.c !== '#ffffff') hits.push(s);
     if (hits.length >= 8) break;
   }
-  if (!hits.length) { toast(`No encontré líneas ni rellenos ahí en el plano ${k}. Acerque más el zoom y toque justo sobre ${target === 'fire' ? 'la pared' : 'la tubería'}.`); return; }
+  return hits;
+}
+async function pickChoose(vec, hits, target, k) {
   const sat = c => { const n = parseInt(c.slice(1), 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255; return Math.max(r, g, b) - Math.min(r, g, b); };
   const rank = h => (sat(h.c) > 40 ? 2 : 0) + (target === 'fire' && h.k === 'f' ? 1 : 0);
   hits.sort((a, b) => rank(b) - rank(a));

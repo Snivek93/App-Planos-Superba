@@ -5,12 +5,12 @@ import { RT, S } from '../core/state.js';
 import { dirty } from '../canvas/render.js';
 import { setTool } from '../editor/tools.js';
 import { save } from '../core/storage.js';
-import { closePanel, toast } from '../ui/app.js';
+import { ask, closePanel, toast } from '../ui/app.js';
 import { ensureVec, isDot, pathCache, ruleCache } from '../detect/vector.js';
 import { clearAutoSeals, runAuto } from '../detect/cross.js';
 import { renderOpBubble } from '../ui/opacity.js';
-import { startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
-import { fireExtras } from '../detect/vector.js';
+import { redetectLintels, startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
+import { fireEdits, fireExtras } from '../detect/vector.js';
 
 /* panel */
 export function ruleHasDots(r) { const v = RT[r.plan].vec; return !!(v && (v.byKey.get(r.key) || []).some(isDot)); }
@@ -34,7 +34,7 @@ export function renderAuto() {
     <div class="sect"><header><h3>Paredes cortafuego (plano A)</h3></header>
       <ul class="cats rules">${a.fire.map(r => ruleRow(r, true)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
       <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button>${a.fire.length ? '<button class="btn" data-act="wallFix">Afinar paredes a mano</button>' : ''}</div>
-      ${a.fire.length ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-act="lintels"${a.lintels !== false ? ' checked' : ''}> Agregar cargadores sobre puertas entre paredes cortafuego${a.lintels !== false && RT.A.lint ? ` <span class="muted">(${fireExtras().lint.length} encontrados)</span>` : ''}</label>` : ''}
+      ${a.fire.length ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-act="lintels"${a.lintels !== false ? ' checked' : ''}> Agregar cargadores sobre puertas entre paredes cortafuego${a.lintels !== false && RT.A.lint ? ` <span class="muted">(${fireExtras().lint.length} encontrados)</span>` : ''}</label>${a.lintels !== false && fireEdits('A') && fireEdits('A').lint ? `<p class="help" style="margin:2px 0 0 26px">Se buscaron una vez y quedan fijos con sus ajustes: no cambian solos. <button class="linkbtn" data-act="relint">Buscar de nuevo</button></p>` : ''}` : ''}
       ${wallFixSummary() ? `<p class="help" style="margin-top:6px">Ajustes a mano: ${esc(wallFixSummary())}. <button class="linkbtn" data-act="wallFixReset">Restaurar todo</button></p>` : ''}</div>
     <div class="sect"><header><h3>Tuberías (plano B)</h3></header>
       <ul class="cats rules">${a.pipes.map(r => ruleRow(r, false)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
@@ -63,6 +63,11 @@ export function init() {
     const b = e.target.closest('[data-act]'); if (!b || b.tagName === 'INPUT' || b.tagName === 'SELECT') return;
     const a = b.dataset.act, li = b.closest('[data-rule]');
     const rule = li ? [...S.auto.fire, ...S.auto.pipes].find(r => r.id === li.dataset.rule) : null;
+    if (a === 'relint') {
+      ask({title:'Buscar cargadores de nuevo', body:'Se vuelven a buscar los cargadores sobre puertas en este arquitectónico. Los que quitó a mano vuelven a aparecer y tendrá que quitarlos otra vez.', buttons:[{label:'Cancelar', value:false, primary:true}, {label:'Buscar de nuevo', value:true, danger:true}]})
+        .then(ok => { if (ok) { redetectLintels(); renderAuto(); } });
+      return;
+    }
     if (a === 'pickFire' || a === 'pickPipe') {
       const k = a === 'pickFire' ? 'A' : 'B';
       if (!RT[k].bmp) return toast(`Primero suba el plano ${k}.`);

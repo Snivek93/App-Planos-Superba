@@ -1,5 +1,5 @@
 /* Eventos del puntero (mouse, lápiz y táctil): dibujar, mover, seleccionar, borrar, colocar sellos. */
-import { HL_WIDTHS, ST, TEXT_SIZES, WIDTHS } from '../core/constants.js';
+import { HL_WIDTHS, ptUnit, ST, TEXT_DEF_PT, WIDTHS } from '../core/constants.js';
 import { align, cur, gesture, L, MK, RT, S, sel, spaceDown, stateVars, tool, uid, undoStack, view } from '../core/state.js';
 import { baseW, clampZ, dist, mid, normAng, rectPts, s2w, snapAngle, toLocal, toWorld, w2s } from '../core/geometry.js';
 import { cv, dirty } from '../canvas/render.js';
@@ -189,7 +189,7 @@ export function tapAction(p, e) {
     const [pl, fl] = frameAt(l, w), lp = toLocal(pl, w);
     ask({title:'Nueva nota', input:'', placeholder:'Por ejemplo: pared 2 h, revisar ducto', ok:'Agregar'}).then(t => {
       if (!t) return; pushUndo();
-      S.marks.push(Object.assign({id:uid(), type:'text', layer:l.id, fl, pts:[lp], size:baseW()*TEXT_SIZES[S.textSize ?? 1][1]/pl.s, text:t, w:0}, S.drawColor ? {color:S.drawColor} : {}));
+      S.marks.push(Object.assign({id:uid(), type:'text', layer:l.id, fl, pts:[lp], size:(S.textPt ?? TEXT_DEF_PT)*ptUnit()/pl.s, text:t, w:0}, S.drawColor ? {color:S.drawColor} : {}));
       changed();
     });
     return;

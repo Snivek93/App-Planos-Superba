@@ -16,6 +16,7 @@ export function injectShared(sh) {
   st.marks = clone(arq.state.marks.filter(m => ids.has(m.layer))).concat(st.marks);
   st.auto.fire = clone(arq.state.auto.fire || []);
   st.auto.fx = clone(arq.state.auto.fx || null);
+  if (arq.state.auto.lintels === false) st.auto.lintels = false; else delete st.auto.lintels;
   const a = arq.state.plans.A;
   Object.assign(st.plans.A, {fileId:a.fileId, page:a.page, w:a.w, h:a.h, pages:a.pages, name:a.name, x:a.x, y:a.y, s:a.s, r:a.r});
   if (!st.layers.find(l => l.id === st.active)) st.active = st.layers[0]?.id;
@@ -31,5 +32,6 @@ export function commitShared() {
   arq.state.marks = arq.state.marks.filter(m => !old.has(m.layer)).concat(clone(S.marks.filter(m => ids.has(m.layer))));
   arq.state.auto.fire = clone(S.auto.fire || []);
   arq.state.auto.fx = clone(S.auto.fx || null);
+  if (S.auto.lintels === false) arq.state.auto.lintels = false; else delete arq.state.auto.lintels;
   if (!arq.state.layers.find(l => l.id === arq.state.active)) arq.state.active = arq.state.layers[0]?.id;
 }

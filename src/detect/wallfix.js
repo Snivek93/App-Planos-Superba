@@ -9,7 +9,7 @@ import { pushUndo } from '../core/undo.js';
 import { save } from '../core/storage.js';
 import { renderOpts } from '../editor/tools.js';
 import { toast } from '../ui/app.js';
-import { ensureVec, fireEdits, fireExtras, isSymbol, pathCache, typicalWallW, visibleEvents } from './vector.js';
+import { ensureVec, fireEdits, fireExtras, isSymbol, lintelsOn, pathCache, typicalWallW, visibleEvents } from './vector.js';
 import { pointInPoly } from './pick.js';
 import { renderAuto } from '../panels/deteccion.js';
 
@@ -98,9 +98,17 @@ export function wallFixTap(w, tolPx) {
     // cargador quitado: devolverlo
     const nl = fx0 && fx0.noLint ? fx0.noLint.findIndex(q => Math.hypot(q[0] - lp[0], q[1] - lp[1]) <= Math.max(tol*2, 6)) : -1;
     if (nl >= 0 && RT.A.lint && RT.A.lint.list.some(l => segDist(lp, [l.a, l.b]) <= l.w/2 + tol)) { pushUndo(); fx0.noLint.splice(nl, 1); changedEdits(); toast('Cargador devuelto.'); return; }
+    // cargador quitado (guardado con los ajustes): devolverlo
+    const back = fx0 && fx0.lint ? fx0.lint.find(l => l.off && segDist(lp, [l.a, l.b]) <= l.w/2 + tol) : null;
+    if (back) { pushUndo(); delete back.off; changedEdits(); toast('Cargador devuelto.'); return; }
     // cargador sobre puerta: quitarlo
     const lt = fireExtras().lint.find(l => segDist(lp, [l.a, l.b]) <= l.w/2 + tol);
-    if (lt) { const e = editsForWrite(); pushUndo(); e.noLint.push([(lt.a[0] + lt.b[0])/2, (lt.a[1] + lt.b[1])/2].map(v => Math.round(v*10)/10)); changedEdits(); toast('Cargador quitado. Tóquelo otra vez para devolverlo.'); return; }
+    if (lt) {
+      pushUndo();
+      if (fx0 && fx0.lint && fx0.lint.includes(lt)) lt.off = true;
+      else { const e = editsForWrite(); e.noLint.push([(lt.a[0] + lt.b[0])/2, (lt.a[1] + lt.b[1])/2].map(v => Math.round(v*10)/10)); }
+      changedEdits(); toast('Cargador quitado. Tóquelo otra vez para devolverlo.'); return;
+    }
   }
   const rules = S.auto.fire.filter(r => r.on);
   const fx = fireEdits('A');
@@ -144,7 +152,7 @@ export function wallFixRect(wa, wb) {
 
 export function wallFixSummary() {
   const fx = fireEdits('A'); if (!fx) return '';
-  const a = fx.excl.length, b = fx.masks.length, c = (fx.adds || []).length, d = (fx.noLint || []).length;
+  const a = fx.excl.length, b = fx.masks.length, c = (fx.adds || []).length, d = (fx.noLint || []).length + (fx.lint || []).filter(l => l.off).length;
   if (!a && !b && !c && !d) return '';
   return [a ? `${a} ${a === 1 ? 'elemento quitado' : 'elementos quitados'}` : '', b ? `${b} ${b === 1 ? 'zona borrada' : 'zonas borradas'}` : '',
     c ? `${c} ${c === 1 ? 'tramo agregado' : 'tramos agregados'}` : '', d ? `${d} ${d === 1 ? 'cargador quitado' : 'cargadores quitados'}` : ''].filter(Boolean).join(' · ');
@@ -152,7 +160,7 @@ export function wallFixSummary() {
 
 export function wallFixReset() {
   const fx = fireEdits('A'); if (!fx) return;
-  pushUndo(); fx.excl = []; fx.masks = []; fx.adds = []; fx.noLint = []; changedEdits();
+  pushUndo(); fx.excl = []; fx.masks = []; fx.adds = []; fx.noLint = []; (fx.lint || []).forEach(l => delete l.off); changedEdits();
   toast('Se restauraron todas las paredes detectadas.');
 }
 
@@ -160,7 +168,14 @@ export function wallFixReset() {
 export function wallFixMasks() { const fx = fireEdits('A'); return fx ? fx.masks : []; }
 /* para la vista: cargadores encontrados (activos y quitados) */
 export function wallFixLintels() {
-  const all = RT.A.lint && S.auto.lintels !== false ? RT.A.lint.list : [], on = new Set(fireExtras().lint);
+  const all = RT.A.lint && lintelsOn('A') ? RT.A.lint.list : [], on = new Set(fireExtras().lint);
   return all.map(l => ({...l, off: !on.has(l)}));
 }
 export { isSymbol };
+
+/* vuelve a buscar los cargadores del plano A (los quitados a mano vuelven a aparecer) */
+export function redetectLintels() {
+  const fx = fireEdits('A'); if (!fx) return;
+  pushUndo(); delete fx.lint; delete fx.lintTw; fx.noLint = []; RT.A.lint = null; changedEdits();
+  toast('Se volvieron a buscar los cargadores sobre puertas.');
+}

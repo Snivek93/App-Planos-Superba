@@ -1,13 +1,13 @@
 /* Lectura vectorial del PDF (trazos, rellenos, rótulos de diámetro) y resaltado. */
 import { isMobile, LITE, PDF_UNIT, pdfjsLib } from '../core/constants.js';
-import { RT, S } from '../core/state.js';
+import { P, RT, S } from '../core/state.js';
 import { blitPart, ctx, dirty, setWorld } from '../canvas/render.js';
 import { planFrames, solo } from '../plans/floors.js';
 import { renderAuto } from '../panels/deteccion.js';
 import { ensurePdf } from '../plans/load.js';
-import { DB } from '../core/storage.js';
+import { DB, save } from '../core/storage.js';
 import { detectLintels } from './lintels.js';
-import { extraEdits, extraFireRules, extraKeys, isAKey, lookOf, planKeys } from '../plans/extraA.js';
+import { extraEdits, extraFireRules, extraKeys, isAKey, lookOf, planKeys, sheetOfKey } from '../plans/extraA.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
@@ -199,6 +199,20 @@ export async function ensureLabels(k) {
       const mx = (r.sx + r.ex)/2 + 0, my = (r.sy + r.ey)/2 + r.h*0.35;
       const q = apT(VT, mx, my);
       list.push({x:q[0], y:q[1], d:diamLabel(mt[1], mt[2])});
+    }
+  }
+  // planos que rotulan el diámetro sin "ø" (por ejemplo supresión: "32 mm", "80 mm"): solo si no hay ningún rótulo con ø,
+  // y solo medidas nominales de tubería, para no confundir con otras cotas
+  if (!list.length) {
+    const NOM = new Set([13, 15, 19, 20, 25, 32, 38, 40, 50, 63, 65, 75, 80, 90, 100, 110, 125, 150, 160, 200, 250, 300]);
+    const RE = /(?:^|[^\d.,])(\d{2,3})\s*mm\b/gi;
+    for (const r of runs) {
+      const st = undouble(r.str); RE.lastIndex = 0; let mt;
+      while ((mt = RE.exec(st))) {
+        if (!NOM.has(+mt[1])) continue;
+        const q = apT(VT, (r.sx + r.ex)/2, (r.sy + r.ey)/2 + r.h*0.35);
+        list.push({x:q[0], y:q[1], d:`ø${mt[1]} mm`});
+      }
     }
   }
   rt.labels = {page:p.page, list};
@@ -440,10 +454,25 @@ export function overlayCanvas(k, rules, maxPx) {
   }
   if (fire.size && isAKey(k)) {
     try {
-      const sig = lintSig(rules.map(([r]) => r), fx);
-      if (!rt.lint || rt.lint.sig !== sig || rt.lint.vec !== rt.vec) {
+      // los cargadores se buscan UNA vez por archivo del plano A y quedan guardados con los ajustes (fx.lint):
+      // después no se recalculan solos, así lo quitado o cambiado a mano no vuelve a aparecer
+      const fz = fx && fx.lint;
+      if (fz) { if (!rt.lint || rt.lint.list !== fz) rt.lint = {sig:'fijo', vec:rt.vec, list:fz, tw:fx.lintTw || 0}; }
+      else {
         const O = c.getContext('2d', {willReadFrequently:true}).getImageData(0, 0, c.width, c.height);
-        rt.lint = {sig, vec:rt.vec, ...detectLintels(O.data, c.width, c.height, sc, rt.vec)};
+        const res = detectLintels(O.data, c.width, c.height, sc, rt.vec), f2 = fxCreate(k);
+        if (f2) {
+          const r1 = v => Math.round(v*10)/10, off = f2.noLint || [];
+          f2.lint = res.list.map(l => {
+            const mid = [(l.a[0] + l.b[0])/2, (l.a[1] + l.b[1])/2], G = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]);
+            const o = {a:l.a.map(r1), b:l.b.map(r1), w:r1(l.w)};
+            if (off.some(q => Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.max(G/2, 4))) o.off = true; // quitado antes a mano
+            return o;
+          });
+          f2.lintTw = r1(res.tw || 0); f2.noLint = [];
+          rt.lint = {sig:'fijo', vec:rt.vec, list:f2.lint, tw:f2.lintTw};
+          setTimeout(() => save(), 0);
+        } else rt.lint = {sig:'tmp', vec:rt.vec, ...res};
         setTimeout(renderAuto, 0);
       }
       g.setTransform(sc, 0, 0, sc, 0, 0); g.globalCompositeOperation = 'source-over';
@@ -482,14 +511,27 @@ function knockout(c, bmp, colors) {
 export const hlOverlay = {A:null, B:null};
 
 /* --- cargadores sobre puertas y paredes agregadas a mano (herramienta Afinar) --- */
-function lintSig(rules, fx) { return rules.map(r => r.id + ':' + r.key + ':' + (r.noDots !== false)).join('|') + '#' + (fx ? fx.src + ':' + fx.excl.join(',') + ':' + fx.masks.length : ''); }
 const inMask = (fx, p) => fx && fx.masks.some(m => p[0] >= m[0] && p[0] <= m[2] && p[1] >= m[1] && p[1] <= m[3]);
 /* Lo que se suma a las paredes del plano A, en coordenadas del plano A:
    lint: cargadores encontrados (sin los quitados a mano ni los que caen en una zona borrada); adds: trazos a mano. */
+export function lintelsOn(k = 'A') {
+  if (k === 'A' || !isAKey(k)) return S.auto.lintels !== false;
+  const arq = P.sheets[sheetOfKey(k)]; return !arq || arq.state.auto.lintels !== false;
+}
+/* ajustes del plano A k para escribir (se crean si no hay): sirven para guardar los cargadores encontrados */
+function fxCreate(k) {
+  const rt = RT[k]; if (!rt || !rt.fileId) return null;
+  const src = rt.fileId + '#' + (S.plans[k].page || 1), blank = () => ({src, excl:[], masks:[], adds:[], noLint:[], v:0});
+  if (k === 'A') { if (!S.auto.fx || S.auto.fx.src !== src) S.auto.fx = blank(); return S.auto.fx; }
+  const arq = P.sheets[sheetOfKey(k)]; if (!arq) return null;
+  if (!arq.state.auto.fx || arq.state.auto.fx.src !== src) arq.state.auto.fx = blank();
+  return arq.state.auto.fx;
+}
 export function fireExtras(k = 'A') {
   const rt = RT[k] || {}, fx = fireEdits(k);
   const off = (fx && fx.noLint) || [];
-  const lint = S.auto.lintels === false || !rt.lint ? [] : rt.lint.list.filter(l => {
+  const lint = !lintelsOn(k) || !rt.lint ? [] : rt.lint.list.filter(l => {
+    if (l.off) return false;
     const mid = [(l.a[0] + l.b[0])/2, (l.a[1] + l.b[1])/2], G = Math.hypot(l.b[0] - l.a[0], l.b[1] - l.a[1]);
     return !inMask(fx, mid) && !off.some(q => Math.hypot(q[0] - mid[0], q[1] - mid[1]) < Math.max(G/2, 4));
   });
@@ -512,7 +554,7 @@ export function overlayFor(k) {
   if (!rt.vec) return null;
   const rules = autoRules().filter(([r]) => r.on && r.plan === k);
   if (!rules.length) return null;
-  const sig = rules.map(([r, f]) => [r.id, r.key, r.noDots, f ? FIRE_HL : r.hl].join(':')).join('|') + '|' + p.w + 'x' + p.h + '|' + editsSig(fireEdits(k)) + '|' + (S.auto.lintels !== false);
+  const sig = rules.map(([r, f]) => [r.id, r.key, r.noDots, f ? FIRE_HL : r.hl].join(':')).join('|') + '|' + p.w + 'x' + p.h + '|' + editsSig(fireEdits(k)) + '|' + lintelsOn(k);
   const o = rt.hl;
   if (o && o.sig === sig && o.vec === rt.vec) return o;
   const oc = overlayCanvas(k, rules, isMobile || LITE ? 3000 : 4096);

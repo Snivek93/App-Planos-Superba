@@ -86,8 +86,12 @@ export const HL_COLORS = ['#FFD400','#7CE36B','#FF7EB6','#FFA53D','#5CC8FF','#B9
 export const HL_WIDTHS = [3, 5, 10, 18, 30];
 
 /* tamaños de texto (en píxeles de pantalla con zoom 1): chico, mediano, grande, muy grande */
-export const TEXT_SIZES = [['Chico', 9], ['Mediano', 13], ['Grande', 18], ['Muy grande', 26]];
-export const textSizeSeg = (act, cur) => `<span class="lbl">Tamaño</span><div class="seg" role="group" aria-label="Tamaño del texto">${TEXT_SIZES.map(([n], i) => `<button data-o="${act}" data-v="${i}" class="${cur === i ? 'on' : ''}" title="${n}">${['S', 'M', 'L', 'XL'][i]}</button>`).join('')}</div>`;
+/* Tamaño del texto en puntos, como en Word: es el tamaño con que sale en la lámina impresa (PDF exportado).
+   Se mide sobre la lámina del plano B (o del A si no hay B), a escala 1:1 del PDF. */
+export const TEXT_PTS = [2, 4, 6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 48, 72];
+export const TEXT_DEF_PT = 14;
+export function ptUnit() { const r = S.plans.B && S.plans.B.w ? S.plans.B : S.plans.A; return PDF_UNIT*((r && r.s) || 1); }
+export const textSizeSeg = (act, cur) => `<span class="lbl">Tamaño</span><select data-o="${act}" aria-label="Tamaño del texto (puntos)" style="width:auto">${TEXT_PTS.includes(cur) ? '' : `<option value="" selected>${cur > 0 ? cur : '—'}</option>`}${TEXT_PTS.map(v => `<option value="${v}"${v === cur ? ' selected' : ''}>${v}</option>`).join('')}</select><span class="lbl">pt</span>`;
 export const LAYER_COLORS = ['#C81E2B','#1E6FB8','#12866B','#D08F00','#8A3FC0','#E05A9B','#21272C'];
 
 /* Se ejecuta una vez al arrancar, en el orden original (ver main.js). */

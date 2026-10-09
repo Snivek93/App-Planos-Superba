@@ -1,5 +1,5 @@
 /* Barra de herramientas, barra de opciones contextual y capas de dibujo. */
-import { $, esc, HL_COLORS, PEN_COLORS, TEXT_SIZES, textSizeSeg, widthSeg } from '../core/constants.js';
+import { $, esc, HL_COLORS, PEN_COLORS, ptUnit, TEXT_DEF_PT, textSizeSeg, widthSeg } from '../core/constants.js';
 import { ICON, TOOLS } from '../ui/icons.js';
 import { align, cur, L, MK, RT, S, sel, stateVars, tool, uid } from '../core/state.js';
 import { cv, dirty } from '../canvas/render.js';
@@ -77,10 +77,9 @@ export function renderOpts() {
       const c0 = strokes[0].color || L(strokes[0].layer)?.color || '#C81E2B';
       h += `<span class="lbl">Color</span><label class="swc" style="background:${c0}" title="Cambiar color"><input type="color" data-o="selColor" value="${c0}" aria-label="Color de la selección"></label>`;
       if (strokes.every(m => m.type === 'text')) {
-        // tamaño actual del texto en la escala de la herramienta (el más cercano)
-        const px = strokes[0].size*(frameOf(strokes[0]).s || 1)/baseW();
-        const ci = TEXT_SIZES.reduce((b, [, v], i) => Math.abs(v - px) < Math.abs(TEXT_SIZES[b][1] - px) ? i : b, 0);
-        h += textSizeSeg('selTextSize', strokes.every(m => Math.abs(m.size*(frameOf(m).s || 1)/baseW() - TEXT_SIZES[ci][1]) < 0.6) ? ci : -1);
+        // tamaño actual del texto en puntos (como sale en la lámina)
+        const pts = strokes.map(m => Math.round(m.size*(frameOf(m).s || 1)/ptUnit()*2)/2);
+        h += textSizeSeg('selTextSize', pts.every(v => v === pts[0]) ? pts[0] : -1);
       }
       if (strokes.every(m => m.type !== 'text')) {
         const a0 = strokes[0].alpha ?? (strokes[0].type === 'hl' ? 0.4 : 1);
@@ -101,7 +100,7 @@ export function renderOpts() {
       ${PEN_COLORS.map(c => `<button class="sw${S.drawColor === c ? ' on' : ''}" style="--c:${c}" data-o="drawColor" data-v="${c}" aria-label="Color ${c}"></button>`).join('')}
       <label class="swc${S.drawColor && !PEN_COLORS.includes(S.drawColor) ? ' on' : ''}" title="Otro color"${S.drawColor && !PEN_COLORS.includes(S.drawColor) ? ` style="background:${S.drawColor}"` : ''}><input type="color" data-o="drawCustom" value="${S.drawColor || lc}" aria-label="Otro color"></label>
       <span class="optsep"></span>`;
-    if (tool === 'text') h += textSizeSeg('textSize', S.textSize ?? 1);
+    if (tool === 'text') h += textSizeSeg('textSize', S.textPt ?? TEXT_DEF_PT);
     if (tool !== 'text') h += widthSeg('width', S.width) + `<span class="optsep"></span><span class="lbl">Opacidad</span><input type="range" min="0.1" max="1" step="0.05" value="${S.drawAlpha}" data-o="drawAlpha" aria-label="Opacidad"><output>${Math.round(S.drawAlpha*100)} %</output>`;
     if (tool === 'poly') {
       h += cur ? `<button class="btn primary" data-o="polyDone">Terminar</button><button class="btn" data-o="polyCancel">Cancelar</button>`
@@ -156,8 +155,6 @@ export function init() {
     if (a === 'width') { S.width = +b.dataset.v; save(); renderOpts(); }
     else if (a === 'hlWidth') { S.hlWidth = +b.dataset.v; save(); renderOpts(); }
     else if (a === 'drawColor') { S.drawColor = b.dataset.v; save(); renderOpts(); }
-    else if (a === 'textSize') { S.textSize = +b.dataset.v; save(); renderOpts(); }
-    else if (a === 'selTextSize') { pushUndo(); const v = TEXT_SIZES[+b.dataset.v][1]; for (const id of sel) { const m = MK(id); if (m && m.type === 'text') m.size = baseW()*v/(frameOf(m).s || 1); } changed(); renderOpts(); }
     else if (a === 'hlColor') { S.hlColor = b.dataset.v; save(); renderOpts(); }
     else if (a === 'sealType') { S.sealType = b.dataset.v; save(); renderOpts(); }
     else if (a === 'sealLoc') { S.sealLoc = b.dataset.v; save(); renderOpts(); }
@@ -199,6 +196,8 @@ export function init() {
     else if (s.dataset.o === 'moveTo') moveSelToLayer(s.value);
     else if (s.dataset.o === 'selMem') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (s.checked) m.mem = true; else delete m.mem; } } changed(); renderOpts(); }
     else if (s.dataset.o === 'selLoc' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.loc = s.value; } changed(); }
+    else if (s.dataset.o === 'textSize' && s.value) { S.textPt = +s.value; save(); renderOpts(); }
+    else if (s.dataset.o === 'selTextSize' && s.value) { pushUndo(); const v = +s.value; for (const id of sel) { const m = MK(id); if (m && m.type === 'text') m.size = v*ptUnit()/(frameOf(m).s || 1); } changed(); renderOpts(); }
     else if (s.dataset.o === 'selType' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') setSealCat(m, s.value); } changed(); }
   });
 }
