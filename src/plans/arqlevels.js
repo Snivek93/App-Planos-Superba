@@ -140,10 +140,16 @@ export function resolveEntry(arq, entry) {
   if (lv.length === all.length) return {...l, region:l.id};
   return {...l, id:entry, region:l.id, levels:lv.join(', '), name:lvName(lv), typical:l.name};
 }
-/* agrupa la selección: un recuadro completo, o los niveles sueltos de cada recuadro en una sola entrada */
+/* agrupa la selección: un recuadro completo, o los niveles sueltos de cada recuadro en una sola entrada.
+   Con la marca "id!sep" (casilla "Una planta por nivel") cada nivel elegido de ese recuadro es una planta aparte:
+   el mismo dibujo del A se usa para varias plantas del B (por ejemplo el nivel 9 y el 13 dibujados por separado). */
+export const SEP = '!sep';
+export const isSepMark = e => String(e).endsWith(SEP);
 export function normEntries(arq, entries) {
   const by = new Map(), star = (entries || []).includes('*');
+  const sep = new Set((entries || []).filter(isSepMark).map(e => String(e).slice(0, -SEP.length)));
   for (const e of entries || []) {
+    if (isSepMark(e)) continue;
     const [id, sub] = String(e).split('@'); const l = lvlsOf(arq).find(x => x.id === id); if (!l) continue;
     const cur = by.get(id) || {all:false, lv:new Set()};
     if (!sub) cur.all = true; else sub.split(',').forEach(x => cur.lv.add(x));
@@ -153,6 +159,7 @@ export function normEntries(arq, entries) {
   for (const l of lvlsOf(arq)) {
     const c = by.get(l.id); if (!c) continue;
     const all = regionLevels(l), lv = all.filter(x => c.lv.has(x));
+    if (sep.has(l.id) && all.length > 1) { for (const x of (c.all ? all : lv)) out.push(`${l.id}@${x}`); out.push(l.id + SEP); continue; }
     out.push(c.all || !all.length || lv.length === all.length ? l.id : `${l.id}@${lv.join(',')}`);
   }
   if (star) out.push('*');
@@ -198,9 +205,11 @@ export function levelChecksHtml(arq, sel) {
   for (const e of sel || []) { const [id, sub] = String(e).split('@'); if (!sub) { S2.add(id); const l = L.find(x => x.id === id); if (l) regionLevels(l).forEach(x => S2.add(id + '@' + x)); } else sub.split(',').forEach(x => S2.add(id + '@' + x)); }
   return L.map(l => {
     const all = regionLevels(l);
-    const head = `<label><input type="checkbox" data-region="${l.id}" value="${l.id}"${S2.has(l.id) ? ' checked' : ''}> <b>${esc(l.name)}</b>${all.length > 1 ? ` <span class="muted">(planta típica)</span>` : ''}</label>`;
+    const sepOn = (sel || []).includes(l.id + SEP);
+    const head = `<label><input type="checkbox" data-region="${l.id}" value="${l.id}"${S2.has(l.id) && !sepOn ? ' checked' : ''}> <b>${esc(l.name)}</b>${all.length > 1 ? ` <span class="muted">(planta típica)</span>` : ''}</label>`;
     if (all.length < 2) return head;
-    return head + `<div class="lvsubs">${all.map(x => `<label><input type="checkbox" data-of="${l.id}" value="${l.id}@${x}"${S2.has(l.id + '@' + x) ? ' checked' : ''}> Nivel ${esc(x)}</label>`).join('')}</div>`;
+    return head + `<div class="lvsubs">${all.map(x => `<label><input type="checkbox" data-of="${l.id}" value="${l.id}@${x}"${S2.has(l.id + '@' + x) || (sepOn && S2.has(l.id)) ? ' checked' : ''}> Nivel ${esc(x)}</label>`).join('')}</div>
+      <label class="lvsep"><input type="checkbox" data-sep="${l.id}" value="${l.id}${SEP}"${sepOn ? ' checked' : ''}> Una planta por cada nivel marcado <span class="muted">(cuando en el plano B esos niveles están dibujados por separado)</span></label>`;
   }).join('');
 }
 export function wireLevelChecks(root) {
@@ -213,8 +222,11 @@ export function wireLevelChecks(root) {
 export function readLevelChecks(root) {
   const out = [];
   for (const head of root.querySelectorAll('[data-region]')) {
-    if (head.checked) { out.push(head.value); continue; }
-    for (const c of root.querySelectorAll(`[data-of="${head.dataset.region}"]:checked`)) out.push(c.value);
+    const id = head.dataset.region, sep = root.querySelector(`[data-sep="${id}"]`)?.checked;
+    if (head.checked && !sep) { out.push(head.value); continue; }
+    const subs = [...root.querySelectorAll(`[data-of="${id}"]${head.checked ? '' : ':checked'}`)].map(c => c.value);
+    out.push(...subs);
+    if (sep && subs.length) out.push(id + SEP);
   }
   return out;
 }
@@ -266,7 +278,8 @@ export function syncLevelFloors(sh) {
   if (!arq || sh.kind !== 'pair') return false;
   const more = moreLevelObjs(sh);
   let lv = aLevelObjs(sh);
-  if ((sh.aLevels || []).length !== lv.length) sh.aLevels = lv.map(l => l.id);
+  const marks = (sh.aLevels || []).filter(isSepMark);
+  if ((sh.aLevels || []).length - marks.length !== lv.length) sh.aLevels = lv.map(l => l.id).concat(marks);
   const ne = normEntries(arq, sh.aLevels); if (ne.join('|') !== (sh.aLevels || []).join('|')) { sh.aLevels = ne; return syncLevelFloors(sh); }
   if (more.length) { if (!lv.length) lv = [resolveEntry(arq, '*')].filter(Boolean); lv = lv.concat(more); }
   const same = (f, l) => f.src === l.id && (f.asheet || null) === (l.asheet || null);

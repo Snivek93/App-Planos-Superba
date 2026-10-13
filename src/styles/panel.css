@@ -206,3 +206,5 @@ input[type=range]{width:100%;accent-color:var(--tinta)}
 .mantbl .fst select{max-width:170px;height:32px}
 .mantbl .fst input{height:32px;padding:0 6px}
 .mantbl .fst td:nth-child(5) input{width:100%;min-width:140px}
+
+#mHtml .checks .lvsep{display:block;padding:0 0 6px 26px;font-size:13px}
