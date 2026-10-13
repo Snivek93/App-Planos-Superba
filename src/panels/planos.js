@@ -13,7 +13,7 @@ import { floorLevels, floorMult, joinY, levelsHtml, parseLevels } from '../core/
 import { prepareAlt } from '../plans/altA.js';
 import { addFloor, autoAlignFloor, deleteFloor, editFloorZoneB, fitRect, floorById, setFloorLevels, floorRectWorld, floorsHtml } from '../plans/floors.js';
 import { aLevelsLabel, curSheet, showHome } from '../project/model.js';
-import { changePage, chooseA } from '../project/sheets.js';
+import { changePage, chooseA, removeA } from '../project/sheets.js';
 import { renderOpBubble } from '../ui/opacity.js';
 import { arqLevelsHtml, levelsChange, levelsClick } from '../plans/arqlevels.js';
 
@@ -27,11 +27,11 @@ export function planCard(k) {
   if (rt.loading) return h + `<p class="muted">Cargando el plano…</p></section>`;
   const pairA = k === 'A' && !arqMode;
   if (!rt.bmp) {
-    if (pairA) return h + `<p class="help" style="margin:0 0 8px">${p.fileId ? 'No se encontró el archivo de ese arquitectónico en este navegador.' : (sh.aSheet ? 'Elija la hoja de arquitectónicos.' : '<b>Sin plano A.</b> Este plano se usa solo con el plano B: no se ven paredes del arquitectónico. Puede elegir uno cuando quiera.')}</p><button class="btn" data-act="chooseA">Elegir arquitectónico</button></section>`;
+    if (pairA) return h + `<p class="help" style="margin:0 0 8px">${p.fileId ? 'No se encontró el archivo de ese arquitectónico en este navegador.' : (sh.aSheet ? 'Elija la hoja de arquitectónicos.' : '<b>Sin plano A.</b> Este plano se usa solo con el plano B: no se ven paredes del arquitectónico. Puede elegir uno cuando quiera.')}</p><div class="btnrow"><button class="btn" data-act="chooseA">Elegir arquitectónico</button>${sh.aSheet ? '<button class="btn" data-act="removeA">Quitar plano A</button>' : ''}</div></section>`;
     return h + `<button class="drop" data-act="upload" data-k="${k}">Subir PDF o imagen</button>${p.w ? '<p class="help">Aquí había un plano. Súbalo de nuevo para ver las marcas sobre él.</p>' : ''}</section>`;
   }
   const label = pairA ? (P.sheets[sh.aSheet]?.name || rt.name) + aLevelsLabel(sh) : rt.name;
-  h += `<div class="fname"><span title="${esc(rt.name)}">${esc(label)}</span>${pairA ? `<button class="linkbtn" data-act="chooseA">Cambiar</button>` :
+  h += `<div class="fname"><span title="${esc(rt.name)}">${esc(label)}</span>${pairA ? `<button class="linkbtn" data-act="chooseA">Cambiar</button><button class="linkbtn red" data-act="removeA">Quitar</button>` :
     `<button class="linkbtn" data-act="upload" data-k="${k}">Cambiar archivo</button>${k === 'B' ? `<button class="linkbtn red" data-act="remove" data-k="${k}">Quitar</button>` : ''}`}</div>`;
   if (p.pages > 1 && !pairA) h += `<div class="field"><label>Página</label><select data-act="page" data-k="${k}">${Array.from({length:p.pages}, (_, i) => `<option value="${i+1}"${p.page === i+1 ? ' selected' : ''}>${i+1} de ${p.pages}</option>`).join('')}</select><span></span></div>`;
   h += `<label class="chk"><input type="checkbox" data-act="visible" data-k="${k}"${p.visible ? ' checked' : ''}> Mostrar plano</label>`;
@@ -75,6 +75,7 @@ export function init() {
     if (a === 'goProj') { showHome(); return; }
     if (a.startsWith('lv')) { levelsClick(a, b.closest('[data-lvl]'), b); return; }
     if (a === 'chooseA') { chooseA(); return; }
+    if (a === 'removeA') { removeA(); return; }
     if (a === 'upload') { loadVars.uploadTarget = k; $('#fileOne').click(); }
     else if (a === 'remove') removePlan(k);
     else if (a === 'blend') { p.blend = b.dataset.v; save(); renderPlans(); dirty(); }

@@ -158,11 +158,22 @@ export async function chooseA() {
   if (key(v) !== key({a: sh.aSheet, lv: sh.aLevels || [], more: sh.aMore || []})) await setPairA(sh, v.a, v.lv, v.more);
 }
 
+/* quitar el plano A: el plano de instalaciones queda solo con el plano B (las paredes siguen en su arquitectónico) */
+export async function removeA() {
+  const sh = curSheet(); if (!sh || sh.kind !== 'pair' || !sh.aSheet) return;
+  const arq = P.sheets[sh.aSheet];
+  const ok = await ask({title:'Quitar el plano A', html:`<p>Este plano queda solo con el plano B. Se dejan de ver las paredes de <b>${esc(arq ? arq.name : 'el arquitectónico')}</b>, pero no se borran: siguen en esa hoja y vuelven si la elige de nuevo con "Elegir arquitectónico".</p><p>Los sellos, los trazos y las plantas de este plano se conservan, con sus niveles.</p>`,
+    buttons:[{label:'Cancelar', value:false}, {label:'Quitar plano A', value:true, danger:true}]});
+  if (!ok) return;
+  await setPairA(sh, null, [], []);
+  toast('Plano A quitado. Este plano queda solo con el plano B.');
+}
+
 export async function setPairA(sh, a, lv, more) {
   a = a && P.sheets[a] ? a : null;   // null: sin plano A
   const sameA = a === (sh.aSheet || null);
   lv = a ? normEntries(P.sheets[a], lv || []) : [];
-  if (!a) { more = []; sh.state.floors = sh.state.floors.filter(f => !f.src); sh.state.aClip = null; }
+  if (!a) more = [];   // sin plano A: las plantas se conservan, así los sellos siguen en sus niveles
   if (more !== undefined) { const m = (more || []).filter(x => x.aSheet !== a && P.sheets[x.aSheet]); if (m.length) sh.aMore = m; else delete sh.aMore; }
   if (P.active !== sh.id) { sh.aSheet = a; sh.aLevels = lv; save(); renderProject(); return; }
   commitShared(); sh.aSheet = a; sh.aLevels = lv; if (a) { P.lastA = a; P.lastLv = sh.aLevels; P.lastMore = sh.aMore || null; } injectShared(sh); pathCache.clear();
