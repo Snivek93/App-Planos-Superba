@@ -9,7 +9,8 @@ import { activeDrawLayer, renderOpts, sealLayer, setTool } from './tools.js';
 import { alignTap } from './align.js';
 import { pushUndo } from '../core/undo.js';
 import { renderPlans } from '../panels/planos.js';
-import { autoDiam, highlightSealRow, updateCounts } from '../panels/sellos.js';
+import { autoDiam, highlightSealRow, renderSeals, updateCounts } from '../panels/sellos.js';
+import { fillWalls } from '../detect/wall.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { aFrameAt, atOf, bFromA, floorAtWorld, floorRect, frameAt, frameOf } from '../plans/floors.js';
@@ -182,7 +183,10 @@ export function tapAction(p, e) {
   if (tool === 'seal') {
     const hit = hitTest(p, true);
     if (hit) { setTool('select'); sel.add(hit.id); renderOpts(); highlightSealRow(); dirty(); return; }
-    autoDiam(placeSeal(w), w); return;
+    const m = placeSeal(w); autoDiam(m, w);
+    // sello de pared puesto a mano: toma el tipo de pared del plano A en ese punto (para el material en Firestop)
+    if (m.loc !== 'losa') fillWalls([m]).then(n => { if (n && S.marks.includes(m)) { save(); renderSeals(); renderOpts(); } }).catch(() => {});
+    return;
   }
   if (tool === 'text') {
     const l = activeDrawLayer(); if (!l) return;

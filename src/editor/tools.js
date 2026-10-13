@@ -15,6 +15,7 @@ import { LOC_NAME, locOf } from '../core/levels.js';
 import { cancelFloor, floorDraft, floorsVars, frameOf, solo } from '../plans/floors.js';
 import { baseW } from '../core/geometry.js';
 import { setWfMode, wallFixCancelDraft, wallFixFinish, wfDraft, wfMode } from '../detect/wallfix.js';
+import { fillWalls, wallNames } from '../detect/wall.js';
 
 /* ---------- herramientas ---------- */
 export function renderTools() {
@@ -69,6 +70,9 @@ export function renderOpts() {
       const st = ms.every(m => m.st === ms[0].st) ? ms[0].st : '';
       const nm = ms.filter(m => m.mem).length;
       h += `<label class="chk small" title="Penetración de membrana: la tubería atraviesa una sola cara"><input type="checkbox" data-o="selMem"${nm === ms.length ? ' checked' : ''}${nm && nm < ms.length ? ' data-mixed="1"' : ''}> Membrana</label>`;
+      const wl = ms.every(m => (m.wall || '') === (ms[0].wall || '')) ? (ms[0].wall || '') : null, names = wallNames();
+      if (wl && !names.includes(wl)) names.unshift(wl);
+      if (ms.some(m => locOf(m) === 'pared')) h += `<span class="lbl">Tipo de pared</span><select data-o="selWall">${wl === null ? '<option value="__">Varios</option>' : ''}<option value=""${wl === '' ? ' selected' : ''}>(sin tipo)</option>${names.map(n => `<option${n === wl ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="__auto">Tomar del plano A</option></select>`;
       h += `<span class="lbl">Tipo</span><select data-o="selType">${st ? '' : '<option value="">Varios</option>'}${S.sealTypes.map(t => `<option value="${t.id}"${t.id === st ? ' selected' : ''}>${t.name}</option>`).join('')}</select>`;
     }
     if (ms.length === 1 && ms[0].type === 'table') h += `<button class="btn primary" data-o="editTable">Editar tabla</button>`;
@@ -197,6 +201,12 @@ export function init() {
     if (s.dataset.o === 'active') { S.active = s.value; save(); renderLayers(); renderOpts(); }
     else if (s.dataset.o === 'moveTo') moveSelToLayer(s.value);
     else if (s.dataset.o === 'selMem') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (s.checked) m.mem = true; else delete m.mem; } } changed(); renderOpts(); }
+    else if (s.dataset.o === 'selWall' && s.value !== '__') {
+      const ms = [...sel].map(MK).filter(m => m && m.type === 'seal');
+      pushUndo();
+      if (s.value === '__auto') { ms.forEach(m => { m.wall = ''; }); fillWalls(ms).then(n => { changed(); renderOpts(); toast(n ? `${n} de ${ms.length} con tipo de pared del plano A.` : 'No hay pared cortafuego marcada debajo de esos sellos.'); }); }
+      else { ms.forEach(m => { m.wall = s.value; }); changed(); }
+    }
     else if (s.dataset.o === 'selLoc' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.loc = s.value; } changed(); }
     else if (s.dataset.o === 'textSize' && s.value) { S.textPt = +s.value; save(); renderOpts(); }
     else if (s.dataset.o === 'selTextSize' && s.value) { pushUndo(); const v = +s.value; for (const id of sel) { const m = MK(id); if (m && m.type === 'text') m.size = v*ptUnit()/(frameOf(m).s || 1); } changed(); renderOpts(); }

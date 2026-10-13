@@ -93,8 +93,11 @@ export function renderProject() {
     return;
   }
   const T = {}; let total = 0; const per = {};
-  for (const sh of all) { T[sh.id] = sheetTotals(sh); total += T[sh.id].q; per[sh.sec] = (per[sh.sec] || 0) + T[sh.id].q; }
-  const chips = P.sections.filter(s => s.kind !== 'arq' && per[s.id]).map(s => `<span class="hchip">${esc(s.name)} <b>${per[s.id]}</b></span>`).join('');
+  const perSub = {};   // sellos por subsección (potable, pluvial…): clave "sección|subsección"
+  for (const sh of all) { T[sh.id] = sheetTotals(sh); total += T[sh.id].q; per[sh.sec] = (per[sh.sec] || 0) + T[sh.id].q; if (sh.sub) perSub[sh.sec + '|' + sh.sub] = (perSub[sh.sec + '|' + sh.sub] || 0) + T[sh.id].q; }
+  const chips = P.sections.filter(s => s.kind !== 'arq' && per[s.id]).map(s => {
+    const subs = s.subs.filter(u => perSub[s.id + '|' + u.id]).map(u => `<span class="hchip sub">${esc(u.name)} <b>${perSub[s.id + '|' + u.id]}</b></span>`).join('');
+    return `<span class="hchip">${esc(s.name)} <b>${per[s.id]}</b></span>${subs}`; }).join('');
   let h = `<div class="hhead"><div><input class="hname" data-pa="pname" value="${esc(P.name)}" aria-label="Nombre del proyecto">
       <div class="hsum"><span class="hbig">${total}</span><div><h3>${total === 1 ? 'Sello' : 'Sellos'} para cuantificar</h3><div class="small muted">${pairs.length} ${pairs.length === 1 ? 'plano de instalaciones' : 'planos de instalaciones'} · ${arqs.length} ${arqs.length === 1 ? 'arquitectónico' : 'arquitectónicos'}</div>${chips ? `<div class="hchips">${chips}</div>` : ''}</div></div></div>
     <div class="hacts"><div class="seg hsort" role="group" aria-label="Ordenar planos">${[['az', 'A → Z'], ['za', 'Z → A'], ['fecha', 'Por fecha']].map(([v, t]) => `<button data-pa="sort" data-v="${v}" class="${(P.sort || 'az') === v ? 'on' : ''}" title="Ordenar los planos ${v === 'fecha' ? 'en el orden en que se agregaron' : 'alfabéticamente'}">${t}</button>`).join('')}</div><div class="seg hlay" role="group" aria-label="Vista de los planos">${[['grid', 'Galería', ICON.grid], ['list', 'Lista', ICON.list]].map(([v, t, ic]) => `<button data-pa="layout" data-v="${v}" class="${(P.layout || 'grid') === v ? 'on' : ''}" title="Ver como ${t.toLowerCase()}" aria-label="${t}">${ic}<span class="hide-sm">${t}</span></button>`).join('')}</div><button class="btn" data-pa="newPair">＋ Nuevo plano</button><button class="btn primary" data-pa="fss">Excel para Firestop Suite</button></div></div>`;
@@ -112,7 +115,8 @@ export function renderProject() {
     if (arq) h += tiles(root, addTile('addArq', 'Agregar arquitectónicos'));
     else if (root.length || !s.subs.length) h += tiles(root, addTile('newPair', s.subs.length ? 'Agregar plano sin subsección' : 'Agregar plano'));
     for (const [j, u] of s.subs.entries()) {
-      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" aria-label="Nombre de la subsección">
+      const nU = perSub[s.id + '|' + u.id] || 0;
+      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" aria-label="Nombre de la subsección">${nU ? `<span class="pcount" title="Sellos en la subsección">${nU}</span>` : ''}
         <label class="subbelow" title="Las tuberías corren bajo la losa: las paredes que cruzan son del nivel inferior"><input type="checkbox" data-pa="subBelow"${u.below ? ' checked' : ''}> <span class="lt">Tuberías</span> bajo losa</label>
         <button class="icon" data-pa="subUp" title="Subir"${j === 0 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="subDown" title="Bajar"${j === s.subs.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="subDel" title="Eliminar subsección">${ICON.trash}</button></header>
         ${tiles(sheetsOf(s.id, u.id), addTile('newPair', 'Agregar plano'))}</div>`;
