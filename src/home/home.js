@@ -116,7 +116,7 @@ export function renderProject() {
     else if (root.length || !s.subs.length) h += tiles(root, addTile('newPair', s.subs.length ? 'Agregar plano sin subsección' : 'Agregar plano'));
     for (const [j, u] of s.subs.entries()) {
       const nU = perSub[s.id + '|' + u.id] || 0;
-      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" aria-label="Nombre de la subsección">${nU ? `<span class="pcount" title="Sellos en la subsección">${nU}</span>` : ''}
+      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" size="${Math.max(4, u.name.length + 1)}" aria-label="Nombre de la subsección">${nU ? `<span class="pcount" title="Sellos en la subsección">${nU}</span>` : ''}
         <label class="subbelow" title="Las tuberías corren bajo la losa: las paredes que cruzan son del nivel inferior"><input type="checkbox" data-pa="subBelow"${u.below ? ' checked' : ''}> <span class="lt">Tuberías</span> bajo losa</label>
         <button class="icon" data-pa="subUp" title="Subir"${j === 0 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="subDown" title="Bajar"${j === s.subs.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="subDel" title="Eliminar subsección">${ICON.trash}</button></header>
         ${tiles(sheetsOf(s.id, u.id), addTile('newPair', 'Agregar plano'))}</div>`;
