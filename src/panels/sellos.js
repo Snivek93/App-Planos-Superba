@@ -1,5 +1,5 @@
 /* Pestaña Sellos: resumen, lista, categorías, numeración y cruces. */
-import { $, esc, nextCatColor, PEND, ST, txtOn } from '../core/constants.js';
+import { $, catMeasure, catNameForMeasure, esc, nextCatColor, PEND, ST, trayDims, trayLabel, txtOn } from '../core/constants.js';
 import { ICON } from '../ui/icons.js';
 import { L, MK, P, RT, S, sel, tool, uid, undoStack, view } from '../core/state.js';
 import { baseW, dist, rectPts, segInter, toLocal, toWorld } from '../core/geometry.js';
@@ -48,8 +48,9 @@ export function typeChips(list, wfn) {
 }
 
 /* El diámetro del sello (etiqueta junto al círculo, Excel, CSV) sigue a su categoría cuando la categoría
-   es un diámetro: si se cambia de "ø13 mm" a "ø19 mm", la etiqueta también. */
-const isDiamName = n => /^[øØ⌀]\s*\d/.test(String(n || '').trim());
+   es un diámetro: si se cambia de "ø13 mm" a "ø19 mm", la etiqueta también. Lo mismo con las canastas
+   ("Canasta 400×100 mm" → el sello lleva 400×100 mm). */
+const isMeasName = n => !!catMeasure(n);
 export function setSealDiam(m, v) {
   const old = m.diam; m.diam = v;
   if (m.note && old && m.note.startsWith(old)) m.note = v + m.note.slice(old.length);
@@ -57,9 +58,9 @@ export function setSealDiam(m, v) {
 }
 export function setSealCat(m, st) {
   m.st = st;
-  const n = ST[st]?.name;
-  if (isDiamName(n) && m.diam !== n.trim()) setSealDiam(m, n.trim());
-  m.review = m.review && !isDiamName(n) ? m.review : false;
+  const n = ST[st]?.name, v = catMeasure(n);
+  if (v && m.diam !== v) setSealDiam(m, v);
+  m.review = m.review && !v ? m.review : false;
 }
 /* Sello puesto a mano (o por cruces de capas): si no tiene diámetro, se toma del rótulo de la tubería más
    cercano en el plano B (ø13 mm, Ø 100…), igual que en la detección automática. */
@@ -82,8 +83,8 @@ export async function syncSealDiams() {
   let ch = 0;
   for (const m of S.marks) {
     if (m.type !== 'seal' || m.diam) continue;
-    const n = (ST[m.st]?.name || '').trim();
-    if (isDiamName(n)) { setSealDiam(m, n); ch++; }
+    const v = catMeasure(ST[m.st]?.name);
+    if (v) { setSealDiam(m, v); ch++; }
   }
   if (ch) { save(); renderSeals(); dirty(); }
 }
@@ -101,15 +102,16 @@ export async function fillMissingDiams() {
 }
 /* al renombrar una categoría de diámetro, los sellos que llevaban ese diámetro se actualizan en todo el proyecto */
 function renameDiamCat(id, oldName, newName) {
-  if (!isDiamName(oldName) || !isDiamName(newName) || oldName.trim() === newName.trim()) return;
-  for (const sh of Object.values(P.sheets)) for (const m of sh.state.marks) if (m.type === 'seal' && m.st === id && (!m.diam || m.diam === oldName.trim())) setSealDiam(m, newName.trim());
+  const ov = catMeasure(oldName), nv = catMeasure(newName);
+  if (!ov || !nv || ov === nv) return;
+  for (const sh of Object.values(P.sheets)) for (const m of sh.state.marks) if (m.type === 'seal' && m.st === id && (!m.diam || m.diam === ov)) setSealDiam(m, nv);
 }
 
 export function sealRow(m) {
   const t = ST[m.st] || ST.otro;
   return `<li data-id="${m.id}" class="${sel.has(m.id) ? 'on' : ''}"><button class="sn" style="--c:${t.color};color:${txtOn(t.color)}" data-act="goto" title="Ver en el plano">${m.n}</button>
       <select data-act="st" aria-label="Tipo del sello ${m.n}">${S.sealTypes.map(x => `<option value="${x.id}"${x.id === m.st ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-      <input data-act="diam" value="${esc(m.diam || '')}" placeholder="ø" aria-label="Diámetro del sello ${m.n}" title="Diámetro">
+      <input data-act="diam" value="${esc(m.diam || '')}" placeholder="ø o A×B" aria-label="Diámetro o dimensión del sello ${m.n}" title="Diámetro (ø50) o, para canastas, dimensión A×B en mm (400×100)">
       ${m.auto ? '<span class="auto" title="Detectado automáticamente">auto</span>' : ''}
       <input data-act="note" value="${esc(m.note)}" placeholder="Nota: material, observaciones…" aria-label="Nota del sello ${m.n}">
       <select data-act="loc" aria-label="Ubicación del sello ${m.n}">${['pared', 'losa'].map(v => `<option value="${v}"${locOf(m) === v ? ' selected' : ''}>${LOC_NAME[v]}</option>`).join('')}</select>
@@ -146,7 +148,7 @@ export function renderSeals() {
     <div class="sect"><header><h3>Tabla en el plano</h3></header>
       <p class="help" style="margin-top:4px">Agrega al plano una tabla con la leyenda de colores y la cantidad de sellos por categoría. Se actualiza sola.${hasF ? ' Si la pone dentro de una planta, cuenta solo los sellos de esa planta.' : ''}</p>
       <div class="btnrow"><button class="btn primary" data-act="table">Insertar tabla</button><button class="btn" data-act="pdf">Descargar PDF</button></div></div>
-    <div class="sect"><header><h3>Categorías</h3><button class="btn" data-act="addCat">Nueva</button></header>
+    <div class="sect"><header><h3>Categorías</h3><span class="btnrow" style="margin:0"><button class="btn" data-act="addTray" title="Categoría de canasta o bandeja de cables con su dimensión A × B">Nueva canasta</button><button class="btn" data-act="addCat">Nueva</button></span></header>
       <p class="help" style="margin-top:4px">Por ejemplo PVC 150 mm, PVC 100 mm, EMT 25 mm. Cada una con su color. ${curSheet() ? `Son de <b>${esc(setName(curSheet()))}</b>: las comparten los planos de ese juego; los otros juegos tienen las suyas.` : ''}${filt ? ' Las cantidades son de la planta elegida.' : ''}</p>
       <ul class="cats">${S.sealTypes.map(t => {
         const c = seals.filter(x => x.st === t.id).length;
@@ -181,6 +183,36 @@ export async function addCategory(selectIt) {
   pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
   if (selectIt || tool === 'seal') S.sealType = t.id;
   changed(); toast(`Categoría "${name}" creada. Puede cambiarle el color en la pestaña Sellos.`);
+}
+
+/* Canasta o bandeja de cables: categoría "Canasta A×B mm" con su tipo de penetrante para Firestop Suite
+   (Bandeja de Cables, dimensión A y B en cm, % de ocupación). Sus sellos llevan la dimensión A×B. */
+export async function addTrayCategory(selectIt) {
+  const num = x => { const n = parseFloat(String(x ?? '').trim().replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const v = await ask({title:'Nueva canasta o bandeja', html:`<p class="muted small" style="margin:0">Se crea la categoría "Canasta A×B mm". Al exportar a Firestop Suite sale como <b>Bandeja de Cables</b> con su dimensión A y B y el porcentaje de ocupación.</p>
+      <div class="cprops">
+        <label class="row"><span>A · ancho (mm)</span><input id="trA" inputmode="decimal" placeholder="400" style="width:90px"></label>
+        <label class="row"><span>B · alto (mm)</span><input id="trB" inputmode="decimal" placeholder="100" style="width:90px"></label>
+        <label class="row"><span>Ocupación de cables (%)</span><input id="trJ" inputmode="decimal" value="40" style="width:90px"></label>
+      </div>`,
+    buttons:[{label:'Cancelar', value:null}, {label:'Crear', value:'ok', primary:true}],
+    read: r => ({a: Math.round(num(r.querySelector('#trA').value)), b: Math.round(num(r.querySelector('#trB').value)), j: num(r.querySelector('#trJ').value)})});
+  if (!v) return;
+  if (!(v.a > 0 && v.b > 0)) return toast('Escriba el ancho y el alto de la canasta en milímetros, por ejemplo 400 y 100.');
+  const name = 'Canasta ' + trayLabel(v);
+  if (S.sealTypes.some(x => x.name.trim().toLowerCase() === name.toLowerCase())) {
+    const t = S.sealTypes.find(x => x.name.trim().toLowerCase() === name.toLowerCase());
+    if (selectIt || tool === 'seal') { S.sealType = t.id; changed(); }
+    return toast(`La categoría "${name}" ya existe.`);
+  }
+  pushUndo();
+  const t = {id:'c' + uid(), name, color: nextCatColor()};
+  const pi = S.sealTypes.findIndex(x => x.id === 'pend');
+  pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
+  if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
+  S.fsx.cats[t.id] = {L:'Bandeja de Cables', F:v.a/10, G:v.b/10, J:v.j || '', I:0, D:'', H:'', E:0, P:'Pasta FS ONE MAX'};
+  if (selectIt || tool === 'seal') S.sealType = t.id;
+  changed(); toast(`Categoría "${name}" creada. Sus sellos llevan la dimensión ${trayLabel(v)}.`);
 }
 
 export async function deleteCategory(id) {
@@ -284,7 +316,7 @@ export function init() {
     if (a === 'pendDiam') {
       pushUndo(); let n = 0, np = 0;
       const cur = curSheet(), states = P ? [...new Set([S, ...Object.values(P.sheets).filter(sh => sh !== cur).map(sh => sh.state)])] : [S];
-      for (const st of states) withState(st, () => { let k = 0; for (const m of st.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(m.diam)); k++; } if (k) { n += k; np++; } });
+      for (const st of states) withState(st, () => { let k = 0; for (const m of st.marks) if (m.type === 'seal' && m.st === 'pend' && m.diam) { setSealCat(m, catForName(catNameForMeasure(m.diam))); k++; } if (k) { n += k; np++; } });
       changed(); renderSeals(); toast(`${n} ${n === 1 ? 'sello asignado' : 'sellos asignados'} a la categoría de su diámetro${np > 1 ? ` en ${np} planos` : ''}.`); return;
     }
     if (a === 'fillDiam') { fillMissingDiams(); return; }
@@ -296,6 +328,7 @@ export function init() {
     else if (a === 'table') { closePanel(); setTool('table'); }
     else if (a === 'pdf') pdfDialog();
     else if (a === 'addCat') addCategory(false);
+    else if (a === 'addTray') addTrayCategory(false);
     else if (a === 'catDel') deleteCategory(b.closest('li').dataset.cat);
     else if (a === 'catProps') catPropsDialog(b.closest('li').dataset.cat);
     else if (a === 'goto') {
@@ -325,13 +358,17 @@ export function init() {
     else if (t.dataset.act === 'note') { m.note = t.value; save(); }
     else if (t.dataset.act === 'diam') {
       let v = t.value.trim();
-      if (v && !/^[øØ⌀]/.test(v)) v = 'ø' + v;
-      const mt = v.match(/^[øØ⌀]\s*(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?)\s*(mm|"|”|pulg|in)?$/);
-      if (mt) v = diamLabel(mt[1], mt[2]);
+      const td = trayDims(v);
+      if (td) v = trayLabel(td);   // canasta: 400x100, 40x10 cm…
+      else {
+        if (v && !/^[øØ⌀]/.test(v)) v = 'ø' + v;
+        const mt = v.match(/^[øØ⌀]\s*(\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?)\s*(mm|"|”|pulg|in)?$/);
+        if (mt) v = diamLabel(mt[1], mt[2]);
+      }
       pushUndo();
       setSealDiam(m, v);
       const cur = ST[m.st];
-      if (v && (S.auto.catMode === 'diam') && (m.auto || /^ø/.test(cur.name) || m.st === 'pend')) m.st = catForName(v);
+      if (v && (S.auto.catMode === 'diam') && (m.auto || isMeasName(cur.name) || m.st === 'pend')) m.st = catForName(catNameForMeasure(v));
       m.review = false; changed();
     }
   });

@@ -1,5 +1,5 @@
 /* Datos de penetrante por categoría (tipo, geometría, espacio anular). */
-import { ST } from '../core/constants.js';
+import { ST, trayDims } from '../core/constants.js';
 import { S } from '../core/state.js';
 import { ask, changed } from '../ui/app.js';
 import { diamToIn, FS_AISL, FS_OPTS_L, FS_OPTS_P, fsGeomCell, fsGeomKind, fsNeedsJ, fsSel, fsSyncGeom, guessL, guessP } from './firestop.js';
@@ -47,7 +47,9 @@ export async function catPropsDialog(id) {
   const ms = S.marks.filter(m => m.type === 'seal' && m.st === id);
   const sysTxt = [...new Set(ms.map(m => m.sys).filter(Boolean))].join(' ');
   const cur = {...(catProps(id) || {})};
-  if (cur.D == null) cur.D = diamToIn(ms.find(m => m.diam)?.diam || t.name);
+  const td = trayDims(ms.find(m => trayDims(m.diam))?.diam || t.name);
+  if (td && (cur.F == null || cur.F === '') && (cur.G == null || cur.G === '')) { cur.F = td.a/10; cur.G = td.b/10; }
+  if (cur.D == null) cur.D = td ? '' : diamToIn(ms.find(m => m.diam)?.diam || t.name);
   const L = cur.L || guessL(t.name + ' ' + sysTxt), P = cur.P || guessP(L, cur.D);
   const html = `<p class="muted small" style="margin:0">Estos datos salen en la tabla del plano y se usan al exportar a Firestop Suite.</p>
     <div class="cprops" id="cpRow">

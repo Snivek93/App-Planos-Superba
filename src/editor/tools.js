@@ -8,7 +8,7 @@ import { deleteSel, finishPoly, moveSelToLayer } from './pointer.js';
 import { startAlign } from './align.js';
 import { pushUndo } from '../core/undo.js';
 import { renderLayers } from '../panels/capas.js';
-import { addCategory, setSealCat } from '../panels/sellos.js';
+import { addCategory, addTrayCategory, setSealCat } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { changed, openPanel, setTab, toast } from '../ui/app.js';
 import { LOC_NAME, locOf } from '../core/levels.js';
@@ -111,6 +111,7 @@ export function renderOpts() {
     if (!S.sealTypes.some(t => t.id === S.sealType)) S.sealType = S.sealTypes[0]?.id || 'pend';
     h = `<div class="seg locseg" role="group" aria-label="Ubicación">${['pared', 'losa'].map(v => `<button data-o="sealLoc" data-v="${v}" class="${(S.sealLoc || 'pared') === v ? 'on' : ''}">${LOC_NAME[v]}</button>`).join('')}</div><span class="optsep"></span>` + S.sealTypes.map(t => `<button class="chip${S.sealType === t.id ? ' on' : ''}" data-o="sealType" data-v="${t.id}" style="--c:${t.color}"><i></i>${esc(t.name)}</button>`).join('') +
       `<button class="chip" data-o="newCat" title="Crear una categoría nueva">+ Nueva categoría</button>` +
+      `<button class="chip" data-o="newTray" title="Canasta o bandeja de cables de dimensión A × B">+ Canasta A×B</button>` +
       `<span class="optsep"></span><span class="lbl">Opacidad</span><input type="range" min="0.2" max="1" step="0.05" value="${S.sealAlpha ?? 0.7}" data-o="sealAlpha" aria-label="Opacidad de los sellos"><output>${Math.round((S.sealAlpha ?? 0.7)*100)} %</output>`;
   } else if (tool === 'pick') {
     const fire = S.auto.picking === 'fire';
@@ -170,6 +171,7 @@ export function init() {
     else if (a === 'floorCancel') cancelFloor();
     else if (a === 'pickDone') { setTool('select'); setTab('auto'); openPanel(); }
     else if (a === 'newCat') addCategory(true);
+    else if (a === 'newTray') addTrayCategory(true);
     else if (a === 'editTable') { const m = MK([...sel][0]); if (m) editTable(m); }
   });
   $('#opts').addEventListener('input', e => {

@@ -1,5 +1,5 @@
 /* Excel para Firestop Suite (hoja CALCULADORA) y escritor .zip/.xlsx sin librerías. */
-import { esc, ST } from '../core/constants.js';
+import { esc, ST, trayDims, trayLabel } from '../core/constants.js';
 import { P, S } from '../core/state.js';
 import { pushUndo } from '../core/undo.js';
 import { sealsSorted } from '../panels/sellos.js';
@@ -40,8 +40,8 @@ export function guessL(txt) {
   if (/cobre|hvac|refrig/i.test(txt)) return "Tubería Cobre Aislado HVAC";
   if (/emt|conduit|el[eé]ctr/i.test(txt)) return "Tubería EMT";
   if (/hierro|acero|metal|\bhg\b|galv/i.test(txt)) return "Tubería Metal";
+  if (/canasta|bandeja/i.test(txt)) return "Bandeja de Cables";
   if (/ducto/i.test(txt)) return "Ducto Redondo";
-  if (/bandeja/i.test(txt)) return "Bandeja de Cables";
   if (/cable/i.test(txt)) return "Cables Sueltos";
   return "Tubería Combustible (PVC, CPVC, PEX, PP-R)";
 }
@@ -97,7 +97,10 @@ export async function fsDialog() {
     const t = ST[g.st], sysTxt = [...new Set(g.list.map(m => m.sys).filter(Boolean))].join(', ');
     const dTxt = g.list.find(m => m.diam)?.diam || t.name;
     const c = {...(cfg.cats[g.st] || {})};
-    if (c.D == null) c.D = diamToIn(dTxt);
+    const td = trayDims(g.list.find(m => trayDims(m.diam))?.diam || t.name);
+    if (td && (c.F == null || c.F === '') && (c.G == null || c.G === '')) { c.F = td.a/10; c.G = td.b/10; }
+    if (c.D == null) c.D = td ? '' : diamToIn(dTxt);
+    if (td && (c.J == null || c.J === '')) c.J = 40;   // canasta sin % de ocupación: 40 % de base
     const L = c.L || guessL(t.name + ' ' + sysTxt), P = c.P || guessP(L, c.D);
     return `<tr data-g="${gi}"><td><span class="ldot" style="--c:${t.color}"></span> <b>${esc(t.name)}</b> <span class="muted">(${g.list.length})</span>${sysTxt ? `<div class="small muted">${esc(sysTxt)}</div>` : ''}</td>
       <td>${fsSel('L', FS_OPTS_L, L)}</td>
@@ -108,7 +111,7 @@ export async function fsDialog() {
   }).join('');
   const cs = curSheet();
   const scopeHtml = `<label class="row"><span>Qué exportar</span><select id="fsScope"><option value="all">Todo el proyecto</option>${cs ? `<option value="cur">Solo este plano: ${esc(cs.name)}</option>` : ''}${P.sections.filter(s => sheetsOf(s.id).length).map(s => `<option value="sec:${s.id}">Solo ${esc(s.name)}</option>`).join('')}</select></label>`;
-  const html = scopeHtml + `<p class="muted small" style="margin:0">Excel con el formato de la hoja CALCULADORA (datos desde la fila 23), listo para "Importar Excel" en Firestop Suite. Una fila por nivel, barrera, tipo de sello y tipo de pared. Los valores quedan guardados para la próxima vez.</p>
+  const html = scopeHtml + `<p class="muted small" style="margin:0">Excel con el formato de la hoja CALCULADORA (datos desde la fila 23), listo para "Importar Excel" en Firestop Suite. Una fila por nivel, barrera, tipo de sello y tipo de pared. Los valores quedan guardados para la próxima vez. Las canastas salen como Bandeja de Cables con la dimensión A×B de cada sello (si un sello no la tiene, se usa la de la categoría).</p>
     <div class="fsbox"><b>Penetrantes</b><table class="fst"><tr><th>Categoría</th><th>Tipo de penetrante</th><th>Geometría</th><th>Espacio anular (in)</th><th>Barrera</th><th>Material Hilti</th></tr>${rowsHtml}</table></div>
     <div class="fsbox"><b>Paredes</b><table class="fst"><tr><th>Tipo de pared</th><th>Material de barrera</th><th>F Rating</th></tr>${wallRows || '<tr><td colspan="3" class="muted">No hay sellos en pared.</td></tr>'}</table></div>
     <div class="fsbox"><b>Losa</b><table class="fst"><tr data-losa="1"><td>Entrepiso</td><td>${fsSel('N', FS_OPTS_N, cfg.losa.N)}</td><td>${fsSel('O', FS_OPTS_O, cfg.losa.O)}</td></tr></table></div>`;
@@ -146,21 +149,24 @@ export function fsRows(cfg, sh) {
     const {lv: levels, f, below} = sealLevels(m);
     const loc = locOf(m), wall = loc === 'pared' ? (m.wall || '(sin tipo de pared)') : '';
     for (const lv of levels) {
-      const mem = !!m.mem, key = [lv, loc, m.st, wall, mem].join('\u0001');
-      const r = map.get(key) || {lv, loc, st:m.st, wall, mem, n:0, planta: f ? f.name : '', auto:0, below};
+      const mem = !!m.mem, td = trayDims(m.diam), key = [lv, loc, m.st, wall, mem, td ? trayLabel(td) : ''].join('\u0001');
+      const r = map.get(key) || {lv, loc, st:m.st, wall, mem, td, n:0, planta: f ? f.name : '', auto:0, below};
       r.n++; if (m.auto) r.auto++; map.set(key, r);
     }
   }
   const rows = [...map.values()].sort((a, b) => String(a.lv).localeCompare(String(b.lv), 'es', {numeric:true}) || a.loc.localeCompare(b.loc) || String(a.wall).localeCompare(String(b.wall)));
   return rows.map(r => {
     const t = ST[r.st], c = cfg.cats[r.st] || {}, w = r.loc === 'losa' ? cfg.losa : (cfg.walls[r.wall] || {N:'Panel de Yeso', O:'2 Horas'});
-    const L = c.L || guessL(t.name), D = c.D ?? '';
-    const zona = (r.loc === 'losa' ? `${t.name} · Losa` : `${t.name} · ${r.wall}`) + (r.mem ? ' · Membrana' : '');
+    // canasta o bandeja: la dimensión A×B viene del sello (en mm) y se exporta en cm como Bandeja de Cables
+    const tray = r.td ? {F: r.td.a/10, G: r.td.b/10} : null;
+    const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray ? '' : (c.D ?? '');
+    const tname = tray && !t.name.includes(trayLabel(r.td)) ? `${t.name} ${trayLabel(r.td)}` : t.name;
+    const zona = (r.loc === 'losa' ? `${tname} · Losa` : `${tname} · ${r.wall}`) + (r.mem ? ' · Membrana' : '');
     const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.mem ? 'penetración de membrana (atraviesa una sola cara)' : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : ''].filter(Boolean).join(' · ');
     const nivel = /^-?\d+(\.\d+)?$/.test(r.lv) ? +r.lv : r.lv;
     const nb = x => x === '' || x == null ? undefined : +x;
-    const J = c.J === '' || c.J == null ? 0 : (+c.J > 1 ? +c.J/100 : +c.J);
-    return [zona, nivel, r.n, nb(D), c.E === '' || c.E == null ? 0 : +c.E, nb(c.F), nb(c.G), nb(c.H),
+    const J = c.J === '' || c.J == null ? (tray ? 0.4 : 0) : (+c.J > 1 ? +c.J/100 : +c.J);
+    return [zona, nivel, r.n, nb(D), tray || c.E === '' || c.E == null ? 0 : +c.E, nb(tray ? tray.F : c.F), nb(tray ? tray.G : c.G), tray ? undefined : nb(c.H),
       c.I === '' || c.I == null ? 0 : +c.I, J, FS_K[L] || '', L, r.loc === 'losa' ? 'Entrepiso' : 'Pared', w.N, w.O, c.P || guessP(L, D), undefined, nota];
   });
 }

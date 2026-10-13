@@ -103,3 +103,25 @@ export function init() {
   MAXAREA = isMobile ? 9e6 : LITE ? 9e6 : 22e6;
   ST = new Proxy({}, {get: (_, id) => stFind(String(id))});
 }
+
+/* ---------- canastas / bandejas de cables: dimensión A × B ----------
+   Se guardan en el sello como "400×100 mm" (A = ancho, B = alto, en mm). Una categoría llamada
+   "Canasta 400×100 mm" (o "Bandeja …") hace que sus sellos lleven esa dimensión, igual que "ø50 mm". */
+const TRAY_RE = /(\d+(?:[.,]\d+)?)\s*[x×X*]\s*(\d+(?:[.,]\d+)?)\s*(mm|cm)?/;
+export function trayDims(txt) {
+  const m = String(txt || '').match(TRAY_RE); if (!m) return null;
+  const k = m[3] && m[3].toLowerCase() === 'cm' ? 10 : 1;
+  const a = Math.round(parseFloat(m[1].replace(',', '.'))*k), b = Math.round(parseFloat(m[2].replace(',', '.'))*k);
+  return a > 0 && b > 0 ? {a, b} : null;
+}
+export const trayLabel = d => `${d.a}×${d.b} mm`;
+export const isTrayName = n => /^\s*(canasta|bandeja)/i.test(String(n || '')) && !!trayDims(n);
+export const isDiamName = n => /^[øØ⌀]\s*\d/.test(String(n || '').trim());
+/* lo que un sello de esa categoría lleva en "diámetro / dimensión" (o null si la categoría no es de medida) */
+export function catMeasure(name) {
+  if (isDiamName(name)) return String(name).trim();
+  if (isTrayName(name)) return trayLabel(trayDims(name));
+  return null;
+}
+/* nombre de categoría para una medida de sello: "ø50 mm" → "ø50 mm"; "400×100 mm" → "Canasta 400×100 mm" */
+export const catNameForMeasure = v => trayDims(v) && !isDiamName(v) ? 'Canasta ' + trayLabel(trayDims(v)) : v;
