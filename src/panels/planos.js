@@ -27,7 +27,7 @@ export function planCard(k) {
   if (rt.loading) return h + `<p class="muted">Cargando el plano…</p></section>`;
   const pairA = k === 'A' && !arqMode;
   if (!rt.bmp) {
-    if (pairA) return h + `<p class="help" style="margin:0 0 8px">${p.fileId ? 'No se encontró el archivo de ese arquitectónico en este navegador.' : 'Elija la hoja de arquitectónicos.'}</p><button class="btn" data-act="chooseA">Elegir arquitectónico</button></section>`;
+    if (pairA) return h + `<p class="help" style="margin:0 0 8px">${p.fileId ? 'No se encontró el archivo de ese arquitectónico en este navegador.' : (sh.aSheet ? 'Elija la hoja de arquitectónicos.' : '<b>Sin plano A.</b> Este plano se usa solo con el plano B: no se ven paredes del arquitectónico. Puede elegir uno cuando quiera.')}</p><button class="btn" data-act="chooseA">Elegir arquitectónico</button></section>`;
     return h + `<button class="drop" data-act="upload" data-k="${k}">Subir PDF o imagen</button>${p.w ? '<p class="help">Aquí había un plano. Súbalo de nuevo para ver las marcas sobre él.</p>' : ''}</section>`;
   }
   const label = pairA ? (P.sheets[sh.aSheet]?.name || rt.name) + aLevelsLabel(sh) : rt.name;

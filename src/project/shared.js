@@ -9,7 +9,13 @@ export function injectShared(sh) {
   const st = sh.state, arq = P.sheets[sh.aSheet];
   const drop = new Set(st.layers.filter(isSharedLayer).map(l => l.id));
   st.layers = st.layers.filter(l => !drop.has(l.id)); st.marks = st.marks.filter(m => !drop.has(m.layer));
-  if (!arq) return;
+  if (!arq) {
+    // sin plano A: no queda ningún archivo de arquitectónico asociado (las marcas propias del plano se conservan)
+    Object.assign(st.plans.A, {fileId:null, page:1, pages:1, name:''});
+    st.auto.fire = []; st.auto.fx = null;
+    if (!st.layers.find(l => l.id === st.active)) st.active = st.layers[0]?.id;
+    return;
+  }
   const al = arq.state.layers.filter(isSharedLayer), ids = new Set(al.map(l => l.id));
   for (const l of st.layers) if (ids.has(l.id)) { const nid = 'L' + uid(); st.marks.forEach(m => { if (m.layer === l.id) m.layer = nid; }); if (st.active === l.id) st.active = nid; l.id = nid; }
   st.layers = clone(al).concat(st.layers);

@@ -177,7 +177,7 @@ export function moreLevelObjs(sh) {
 /* Opciones "hoja completa", "hoja › recuadro" y "hoja › nivel suelto" para elegir el plano A en una lista. */
 export function arqLevelOptions(selA, selLv) {
   const cur = (selLv || []).join(',');
-  return sheetsOf('arq').map(a => {
+  return `<option value=""${selA ? '' : ' selected'}>Sin plano A (solo el plano B)</option>` + sheetsOf('arq').map(a => {
     const L = lvlsOf(a);
     let h = `<option value="${a.id}"${a.id === selA && !cur ? ' selected' : ''}>${esc(a.name)}${L.length ? ' (hoja completa)' : ''}</option>`;
     const vals = new Set();
@@ -306,9 +306,12 @@ export { PDF_UNIT };
 /* --- selector del plano A: un arquitectónico principal y, si hace falta, niveles de otras láminas ---
    sel = {a, lv, more:[{aSheet, aLevels}]}. Se usa al crear un plano de instalaciones y en "Cambiar". */
 function aRowHtml(aid, lv, first) {
-  const arq = P.sheets[aid], L = lvlsOf(arq);
-  const opts = sheetsOf('arq').map(a => `<option value="${a.id}"${a.id === aid ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
-  const checks = L.length ? `<div class="checks" data-lv>${levelChecksHtml(arq, lv)}</div>`
+  const arq = aid ? P.sheets[aid] : null, L = lvlsOf(arq);
+  // el primero puede quedar sin arquitectónico: el plano B se usa solo (sin paredes del plano A)
+  const opts = (first ? `<option value=""${arq ? '' : ' selected'}>Sin plano A (solo el plano B)</option>` : '') +
+    sheetsOf('arq').map(a => `<option value="${a.id}"${a.id === aid ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  const checks = !arq ? `<p class="muted small" data-lv style="margin:4px 0 0">Sin arquitectónico: no se ven paredes del plano A. Sirve para contar sobre el plano B solo o con partidas manuales. Puede elegir un arquitectónico después con "Cambiar".</p>`
+    : L.length ? `<div class="checks" data-lv>${levelChecksHtml(arq, lv)}</div>`
     : `<p class="muted small" data-lv style="margin:4px 0 0">Esta hoja no tiene niveles definidos: se usa completa.</p>`;
   return `<div class="apick" data-row><div class="apick-h"><select data-asel aria-label="Arquitectónico">${opts}</select>${first ? '' : `<button type="button" class="icon" data-arm title="Quitar esta lámina">${ICON.trash}</button>`}</div>${checks}</div>`;
 }
@@ -339,7 +342,9 @@ export function wireAPicker(root, sel = '.apicker:not(.alt)') {
 export function readAPicker(root, sel = '.apicker:not(.alt)') {
   const rows = [...root.querySelectorAll(sel + ' [data-row]')];
   const read = row => { const a = row.querySelector('[data-asel]').value, c = row.querySelector('.checks[data-lv]'); return {a, lv: c ? normEntries(P.sheets[a], readLevelChecks(c)) : []}; };
-  const main = read(rows[0]), seen = new Set([main.a]), more = [];
+  const main = read(rows[0]);
+  if (!main.a) return {a: null, lv: [], more: []};   // sin plano A
+  const seen = new Set([main.a]), more = [];
   for (const row of rows.slice(1)) { const r = read(row); if (seen.has(r.a)) continue; seen.add(r.a); more.push({aSheet: r.a, aLevels: r.lv}); }
   return {a: main.a, lv: main.lv, more};
 }

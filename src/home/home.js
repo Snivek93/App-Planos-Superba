@@ -39,7 +39,7 @@ export function itemHtml(sh, T) {
   else {
     const a = P.sheets[sh.aSheet], st = sh.state, below = st.below || st.floors.some(f => f.below);
     const lv = st.floors.length ? `${st.floors.length} ${st.floors.length === 1 ? 'planta' : 'plantas'}` : (st.levels ? `Nivel ${st.levels}` : '');
-    meta = [lv, `A: ${a ? a.name : '—'}${aLevelsLabel(sh)}`, below ? 'bajo losa' : ''].filter(Boolean).join(' · ');
+    meta = [lv, a ? `A: ${a.name}${aLevelsLabel(sh)}` : 'Sin plano A', below ? 'bajo losa' : ''].filter(Boolean).join(' · ');
     q = `<span class="tq" title="Sellos para cuantificar">${t.q}<small>${t.q === 1 ? 'sello' : 'sellos'}</small></span>`;
   }
   const th = thumbOf(sh);

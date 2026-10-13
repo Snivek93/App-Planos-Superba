@@ -101,17 +101,15 @@ export let pendingB = null;
 
 export function newPairDialog(sec, sub, file) {
   if (file) return addPairFiles([file], sec, sub);
-  if (!sheetsOf('arq').length) { toast('Primero agregue los arquitectónicos: el plano A sale de esa lista.'); return addArqPick(); }
-  pendingB = {sec, sub}; $('#fileB').click();
+  pendingB = {sec, sub}; $('#fileB').click();   // sin arquitectónicos también se puede: el plano B queda sin plano A
 }
 
 export async function addPairFiles(list, sec, sub) {
   const files = [...list].filter(isPlanFile).sort((x, y) => x.name.localeCompare(y.name, 'es', {numeric:true}));
   if (!files.length) return toast('Use archivos PDF, PNG o JPG.');
   const arqs = sheetsOf('arq');
-  if (!arqs.length) { toast('Primero agregue los arquitectónicos: el plano A sale de esa lista.'); return addArqPick(); }
   if (!sec) { const c = curSheet(); if (c && c.kind === 'pair') { sec = c.sec; sub = c.sub; } else sec = P.sections.find(s => s.kind !== 'arq')?.id; }
-  const defA = (P.lastA && P.sheets[P.lastA]) ? P.lastA : arqs[0].id;
+  const defA = (P.lastA && P.sheets[P.lastA]) ? P.lastA : (arqs[0] ? arqs[0].id : '');
   const many = files.length > 1;
   const html = `<label class="row"><span>Sección</span><select id="npLoc">${espLocOptions(sec, sub)}</select></label>
     ${many ? `<label class="row"><span>Plano A (arquitectónico) para todos</span><select id="npAll">${arqLevelOptions(defA, P.lastLv)}</select></label>` : ''}
@@ -136,9 +134,11 @@ export async function addPairFiles(list, sec, sub) {
     st.below = !!(u && subById(s, u)?.below);
     const id = pid('h'), row = v.rows[i] || {};
     const pa = row.pick ? {a: row.pick.a, lv: row.pick.lv} : parseALevel(row.a || defA), more = row.pick ? row.pick.more.filter(m => m.aSheet !== pa.a) : [];
-    P.sheets[id] = {id, kind:'pair', name: row.name || stripExt(f.name), sec:s, sub:u || null, aSheet: pa.a, aLevels: pa.lv, state:st, order:Date.now() + i, initB:true};
-    if (more.length) P.sheets[id].aMore = more;
-    P.lastA = pa.a; P.lastLv = pa.lv; P.lastMore = more.length ? more : null; first = first || id;
+    const aId = pa.a && P.sheets[pa.a] ? pa.a : null;   // null: sin plano A (solo el plano B)
+    P.sheets[id] = {id, kind:'pair', name: row.name || stripExt(f.name), sec:s, sub:u || null, aSheet: aId, aLevels: aId ? pa.lv : [], state:st, order:Date.now() + i, initB:true};
+    if (aId && more.length) P.sheets[id].aMore = more;
+    if (aId) { P.lastA = aId; P.lastLv = pa.lv; P.lastMore = more.length ? more : null; }
+    first = first || id;
   }
   save();
   if (!many && (wasOpen || !homeOn)) { await openSheet(first); toast('Plano creado. En la pestaña Planos defina las plantas o alinee el plano B.'); return; }
@@ -159,12 +159,14 @@ export async function chooseA() {
 }
 
 export async function setPairA(sh, a, lv, more) {
-  const sameA = a === sh.aSheet;
-  lv = normEntries(P.sheets[a], lv || []);
+  a = a && P.sheets[a] ? a : null;   // null: sin plano A
+  const sameA = a === (sh.aSheet || null);
+  lv = a ? normEntries(P.sheets[a], lv || []) : [];
+  if (!a) { more = []; sh.state.floors = sh.state.floors.filter(f => !f.src); sh.state.aClip = null; }
   if (more !== undefined) { const m = (more || []).filter(x => x.aSheet !== a && P.sheets[x.aSheet]); if (m.length) sh.aMore = m; else delete sh.aMore; }
   if (P.active !== sh.id) { sh.aSheet = a; sh.aLevels = lv; save(); renderProject(); return; }
-  commitShared(); sh.aSheet = a; sh.aLevels = lv; P.lastA = a; P.lastLv = sh.aLevels; P.lastMore = sh.aMore || null; injectShared(sh); pathCache.clear();
-  if (!sameA) await loadPlanFile('A', S.plans.A.fileId, S.plans.A.page);
+  commitShared(); sh.aSheet = a; sh.aLevels = lv; if (a) { P.lastA = a; P.lastLv = sh.aLevels; P.lastMore = sh.aMore || null; } injectShared(sh); pathCache.clear();
+  if (!sameA) { if (S.plans.A.fileId) await loadPlanFile('A', S.plans.A.fileId, S.plans.A.page); else RT.A = RT_BLANK(); }
   setupExtras(sh);
   await Promise.all(extraKeys.filter(k => S.plans[k].fileId && !altOnly.has(k)).map(k => loadPlanFile(k, S.plans[k].fileId, S.plans[k].page)));
   const made = syncLevelFloors(sh);
