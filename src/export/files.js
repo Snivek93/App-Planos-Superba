@@ -5,6 +5,7 @@ import { toWorld } from '../core/geometry.js';
 import { cv } from '../canvas/render.js';
 import { sealFloor } from '../canvas/tables.js';
 import { sealGroups, sealsSorted } from '../panels/sellos.js';
+import { manualMarks } from '../panels/manual.js';
 import { toast } from '../ui/app.js';
 import { allLevels, floorLevels, floorMult, joinY, LOC_NAME, locOf, sealLevels, sealWeight } from '../core/levels.js';
 import { floorById, frameOf } from '../plans/floors.js';
@@ -23,14 +24,15 @@ export function baseName() {
 }
 
 export function exportCSV() {
-  const seals = sealsSorted();
-  if (!seals.length) return toast('Todavía no hay sellos para exportar.');
+  const seals = sealsSorted(), man = manualMarks();
+  if (!seals.length && !man.length) return toast('Todavía no hay sellos para exportar.');
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = [['No.', 'Planta', 'Niveles', 'Multiplicador', 'Ubicación', 'Membrana', 'Tipo', 'Diámetro', 'Tubería', 'Pared', 'Origen', 'Nota', 'Capa', 'Plano', 'X', 'Y'].map(q).join(';')];
   for (const m of seals) {
     const l = L(m.layer), w = toWorld(frameOf(m), m.pts[0]);
     rows.push([m.n, sealFloor(m)?.name || '', joinY(sealLevels(m).lv), sealWeight(m), LOC_NAME[locOf(m)], m.mem ? 'Sí' : '', ST[m.st]?.name, m.diam || '', m.sys || '', m.wall || '', m.auto ? 'Automático' : 'Manual', m.note, l.name, l.plan, Math.round(w[0]), Math.round(w[1])].map(q).join(';'));
   }
+  for (const m of man) rows.push([m.n, 'Partida manual', joinY(m.lvs), sealWeight(m), LOC_NAME[locOf(m)], m.mem ? 'Sí' : '', ST[m.st]?.name, m.diam || '', '', m.wall || '', `Partida manual: ${m.q} por nivel`, m.note, '', '', '', ''].map(q).join(';'));
   const sumBlock = (title, list, wfn) => {
     rows.push('', [q(title), q('Pared'), q('Losa'), q('Total')].join(';'));
     for (const t of S.sealTypes) {
@@ -40,7 +42,7 @@ export function exportCSV() {
     const tp = list.filter(x => locOf(x) === 'pared').reduce((a, x) => a + wfn(x), 0), tl = list.filter(x => locOf(x) === 'losa').reduce((a, x) => a + wfn(x), 0);
     rows.push([q('Total'), tp, tl, tp + tl].join(';'));
   };
-  sumBlock(S.floors.length ? `Resumen, todos los niveles (${joinY(allLevels())})` : 'Resumen', seals, sealWeight);
+  sumBlock((S.floors.length ? `Resumen, todos los niveles (${joinY(allLevels())})` : 'Resumen') + (man.length ? ', con partidas manuales' : ''), seals.concat(man), sealWeight);
   if (S.floors.length) for (const [id, name, l] of sealGroups(seals)) {
     if (!l.length) continue;
     const fl = floorById(id), mu = floorMult(fl);

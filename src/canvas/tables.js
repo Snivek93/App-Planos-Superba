@@ -9,14 +9,16 @@ import { ask, changed, toast } from '../ui/app.js';
 import { allLevels, floorLevels, floorMult, joinY, LOC_NAME, locOf, parseLevels, sealWeight } from '../core/levels.js';
 import { anLabel, catProps, geomLabel, penShort } from '../export/penetrante.js';
 import { floorAtWorld, floorById, frameAt, frameOf } from '../plans/floors.js';
+import { manualMarks } from '../panels/manual.js';
 
 /* ---------- tablas de leyenda ---------- */
-export function sealFloor(m) { return S.floors.length ? floorAtWorld(toWorld(frameOf(m), m.pts[0])) : null; }
+export function sealFloor(m) { if (m.man) return null; return S.floors.length ? floorAtWorld(toWorld(frameOf(m), m.pts[0])) : null; }
 
 export function tableModel(m) {
   let seals = S.marks.filter(x => x.type === 'seal');
   const single = m.floor ? floorById(m.floor) : null;
   if (single) seals = seals.filter(x => sealFloor(x) === single);
+  else if (m.man) seals = seals.concat(manualMarks()); // partidas manuales, si se pidió en la tabla
   const wfn = single ? () => 1 : sealWeight;
   const cats = m.cats ? S.sealTypes.filter(t => m.cats.includes(t.id)) : S.sealTypes.filter(t => seals.some(x => x.st === t.id));
   const show = Object.assign({pen:true, geom:true, an:true, bar:true}, m.cols || {});
@@ -135,15 +137,16 @@ export async function editTable(m) {
     <label class="row"><span>Tamaño en el plano</span><select id="tSize">${TABLE_SIZES.map(([n], i) => `<option value="${i}"${i === si ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
     ${S.floors.length ? `<label class="row"><span>Contar sellos de</span><select id="tFloor"><option value="">Todas las plantas (todos los niveles)</option>${S.floors.map(f => `<option value="${f.id}"${m.floor === f.id ? ' selected' : ''}>${esc(f.name)} (${esc(joinY(floorLevels(f)))})</option>`).join('')}</select></label>` : ''}
     <div class="row"><span class="muted small">Columnas</span><div class="checks">${[['pen', 'Tipo de penetrante'], ['geom', 'Geometría (diámetro o A×B)'], ['an', 'Espacio anular'], ['bar', 'Barrera (pared o losa)']].map(([k, n]) => `<label><input type="checkbox" data-col="${k}"${(m.cols || {})[k] === false ? '' : ' checked'}> ${n}</label>`).join('')}</div></div>
+    ${(S.manual || []).length ? `<label class="chk"><input type="checkbox" id="tMan"${m.man ? ' checked' : ''}> Incluir las partidas manuales (sellos sin punto en el plano)${S.floors.length ? '; solo cuando cuenta todas las plantas' : ''}</label>` : ''}
     <label class="chk"><input type="checkbox" id="tAuto"${m.cats ? '' : ' checked'}> Mostrar automáticamente las categorías que tengan sellos</label>
     <div class="checks" id="tCats"${m.cats ? '' : ' hidden'}>${S.sealTypes.map(t => `<label><input type="checkbox" value="${t.id}"${!m.cats || m.cats.includes(t.id) ? ' checked' : ''}><span class="ldot" style="--c:${t.color}"></span>${esc(t.name)}</label>`).join('')}</div>`;
   const v = await ask({title:'Editar tabla', html, buttons:[{label:'Cancelar', value:null}, {label:'Guardar', value:'ok', primary:true}],
     setup: root => { root.querySelector('#tAuto').onchange = e => { root.querySelector('#tCats').hidden = e.target.checked; }; },
     read: root => ({title: root.querySelector('#tTitle').value.trim(), size: +root.querySelector('#tSize').value, auto: root.querySelector('#tAuto').checked,
       cats: [...root.querySelectorAll('#tCats input:checked')].map(i => i.value), floor: root.querySelector('#tFloor')?.value || '',
-      cols: Object.fromEntries([...root.querySelectorAll('[data-col]')].map(i => [i.dataset.col, i.checked]))})});
+      cols: Object.fromEntries([...root.querySelectorAll('[data-col]')].map(i => [i.dataset.col, i.checked])), man: !!root.querySelector('#tMan')?.checked})});
   if (!v) return;
   pushUndo();
-  m.title = v.title; m.size = baseW()*TABLE_SIZES[v.size][1]/pl.s; m.cats = v.auto ? null : v.cats; m.floor = v.floor || null; m.cols = v.cols;
+  m.title = v.title; m.size = baseW()*TABLE_SIZES[v.size][1]/pl.s; m.cats = v.auto ? null : v.cats; m.floor = v.floor || null; m.cols = v.cols; if (v.man) m.man = true; else delete m.man;
   changed();
 }

@@ -1,7 +1,7 @@
 /* Modelo del proyecto: secciones, subsecciones, hojas y utilidades. */
 import { $, DEFAULT_SEAL_TYPES, esc } from '../core/constants.js';
 import { defaultState, newPlan, P, S, stateVars } from '../core/state.js';
-import { sealsSorted } from '../panels/sellos.js';
+import { allSeals } from '../panels/manual.js';
 import { save } from '../core/storage.js';
 import { closePanel } from '../ui/app.js';
 import { closeSheet } from './sheets.js';
@@ -102,7 +102,7 @@ function catsOf(st) {
 export function adoptCats(sh, oldKey) {
   if (!P || !P.catSets || catKey(sh) === oldKey) return;
   const from = P.catSets[oldKey] || [], to = catsForKey(catKey(sh)), map = {};
-  const need = new Set([...sh.state.marks.filter(m => m.type === 'seal').map(m => m.st), ...sh.state.layers.map(l => l.st).filter(Boolean)]);
+  const need = new Set([...sh.state.marks.filter(m => m.type === 'seal').map(m => m.st), ...(sh.state.manual || []).map(e => e.st), ...sh.state.layers.map(l => l.st).filter(Boolean)]);
   for (const id of need) {
     if (to.some(t => t.id === id)) continue;
     const t = from.find(x => x.id === id); if (!t) continue;
@@ -114,6 +114,7 @@ export function adoptCats(sh, oldKey) {
     map[id] = nt.id;
   }
   for (const m of sh.state.marks) if (m.type === 'seal' && map[m.st]) m.st = map[m.st];
+  for (const e of sh.state.manual || []) if (map[e.st]) e.st = map[e.st];
   for (const l of sh.state.layers) if (map[l.st]) l.st = map[l.st];
 }
 /* proyectos guardados con categorías de todo el proyecto: se reparten por juego, con las que usa cada uno */
@@ -125,7 +126,7 @@ export function migrateCats(force) {
   for (const sh of Object.values(P.sheets)) { const k = catKey(sh); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sh); }
   for (const [k, shs] of groups) {
     const used = new Set();
-    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal') used.add(m.st); for (const l of sh.state.layers) if (l.st) used.add(l.st); }
+    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal') used.add(m.st); for (const e of sh.state.manual || []) used.add(e.st); for (const l of sh.state.layers) if (l.st) used.add(l.st); }
     const list = [], map = {};
     for (const t of all) {
       if (t.id === 'pend' || !used.has(t.id)) continue;
@@ -135,7 +136,7 @@ export function migrateCats(force) {
       list.push(nt); map[t.id] = nt.id;
     }
     list.push({...(all.find(t => t.id === 'pend') || DEFAULT_SEAL_TYPES.find(t => t.id === 'pend'))});
-    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal' && map[m.st]) m.st = map[m.st]; for (const l of sh.state.layers) if (map[l.st]) l.st = map[l.st]; }
+    for (const sh of shs) { for (const m of sh.state.marks) if (m.type === 'seal' && map[m.st]) m.st = map[m.st]; for (const e of sh.state.manual || []) if (map[e.st]) e.st = map[e.st]; for (const l of sh.state.layers) if (map[l.st]) l.st = map[l.st]; }
     P.catSets[k] = list;
   }
 }
@@ -169,6 +170,7 @@ export function normState(o) {
   if (!Array.isArray(st.floors)) st.floors = [];
   if (!Array.isArray(st.layers) || !st.layers.length) st.layers = base.layers;
   if (!Array.isArray(st.marks)) st.marks = [];
+  if (!Array.isArray(st.manual)) st.manual = [];
   delete st.sealTypes; delete st.fsx;
   bindShared(st);
   if (!st.layers.find(l => l.id === st.active)) st.active = st.layers[0]?.id;
@@ -251,7 +253,7 @@ export function scopeSheets(scope) {
 
 export function withState(st, fn) { const prev = S; stateVars.S = st; try { return fn(); } finally { stateVars.S = prev; } }
 
-export function projectSeals(scope) { const out = []; for (const sh of scopeSheets(scope)) out.push(...withState(sh.state, () => sealsSorted())); return out; }
+export function projectSeals(scope) { const out = []; for (const sh of scopeSheets(scope)) out.push(...withState(sh.state, () => allSeals())); return out; }
 
 /* Acceso de escritura para otros módulos (los import de ES son de solo lectura). */
 export const modelVars = {

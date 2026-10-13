@@ -3,6 +3,7 @@ import { $, esc } from '../core/constants.js';
 import { ICON } from '../ui/icons.js';
 import { L, P, S } from '../core/state.js';
 import { sealsSorted } from '../panels/sellos.js';
+import { manualMarks } from '../panels/manual.js';
 import { save } from '../core/storage.js';
 import { ask, renderAll, renderTop } from '../ui/app.js';
 import { exportQuant, sealWeight } from '../core/levels.js';
@@ -20,7 +21,7 @@ import { fillThumbs, warmUp } from '../project/warm.js';
 export function sheetTotals(sh) {
   return withState(sh.state, () => {
     const ss = sealsSorted();
-    return {seals:ss.length, q:ss.reduce((a, m) => a + sealWeight(m), 0), walls:S.marks.filter(m => L(m.layer) && isSharedLayer(L(m.layer))).length + (S.auto.fire || []).filter(r => r.on).length};
+    return {seals:ss.length, q:ss.concat(manualMarks()).reduce((a, m) => a + sealWeight(m), 0), walls:S.marks.filter(m => L(m.layer) && isSharedLayer(L(m.layer))).length + (S.auto.fire || []).filter(r => r.on).length};
   });
 }
 

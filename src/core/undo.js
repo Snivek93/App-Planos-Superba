@@ -9,13 +9,13 @@ import { changed, renderTop } from '../ui/app.js';
 /* ---------- deshacer ---------- */
 export function pickT(p) { return ({x:p.x, y:p.y, s:p.s, r:p.r}); }
 
-export function snap() { return JSON.stringify({floors:S.floors, sealTypes:S.sealTypes, layers:S.layers, marks:S.marks, seq:S.seq, A:pickT(S.plans.A), B:pickT(S.plans.B), fx:S.auto.fx || null}); }
+export function snap() { return JSON.stringify({floors:S.floors, sealTypes:S.sealTypes, layers:S.layers, marks:S.marks, manual:S.manual || [], seq:S.seq, A:pickT(S.plans.A), B:pickT(S.plans.B), fx:S.auto.fx || null}); }
 
 export function pushUndo() { undoStack.push(snap()); if (undoStack.length > 100) undoStack.shift(); stateVars.redoStack = []; renderTop(); }
 
 export function restoreSnap(str) {
   const o = JSON.parse(str);
-  S.layers = o.layers; S.marks = o.marks; S.seq = o.seq; if (o.sealTypes) S.sealTypes = o.sealTypes; if (o.floors) S.floors = o.floors;
+  S.layers = o.layers; S.marks = o.marks; S.seq = o.seq; if (o.manual) S.manual = o.manual; if (o.sealTypes) S.sealTypes = o.sealTypes; if (o.floors) S.floors = o.floors;
   Object.assign(S.plans.A, o.A); Object.assign(S.plans.B, o.B);
   if ('fx' in o) { S.auto.fx = o.fx; RT.A.hl = null; pathCache.clear(); }
   if (!L(S.active)) S.active = S.layers[0]?.id;

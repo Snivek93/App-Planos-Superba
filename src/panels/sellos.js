@@ -21,6 +21,7 @@ import { floorById, frameOf } from '../plans/floors.js';
 import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
 import { catKey, curSheet, secById, subById, withState } from '../project/model.js';
+import { addManual, manualDel, manualEdit, manualHtml, manualMarks, pasteManual } from './manual.js';
 /* nombre del juego de planos (subsección o sección) */
 function setName(sh) { if (!sh) return ''; if (sh.kind === 'arq') return 'los arquitectónicos'; const s = secById(sh.sec), u = sh.sub ? subById(sh.sec, sh.sub) : null; return (s ? s.name : '') + (u ? ' › ' + u.name : ''); }
 
@@ -130,12 +131,14 @@ export function renderSeals() {
   if (hasF) h += `<div class="field" style="grid-template-columns:70px 1fr;margin-top:0"><label>Planta</label><select data-act="sfilter">
       <option value="">Todas las plantas (${all.length})</option>
       ${groups.map(([id, name, l]) => `<option value="${id}"${filt === id ? ' selected' : ''}>${esc(name)} (${l.length})</option>`).join('')}</select></div>`;
-  const tot = seals.reduce((a, m) => a + sealWeight(m), 0);
+  // partidas manuales (sin punto en el plano): cuentan en el resumen cuando no se filtra por planta
+  const man = filt ? [] : manualMarks(), manQ = man.reduce((a, m) => a + sealWeight(m), 0), withMan = seals.concat(man);
+  const totM = seals.reduce((a, m) => a + sealWeight(m), 0), tot = totM + manQ;
   const fSel = filt && filt !== '_none' ? floorById(filt) : null, fm = fSel ? floorMult(fSel) : 1;
-  const nP = seals.filter(m => locOf(m) === 'pared').reduce((a, m) => a + sealWeight(m), 0), nL = tot - nP;
+  const nP = withMan.filter(m => locOf(m) === 'pared').reduce((a, m) => a + sealWeight(m), 0), nL = tot - nP;
   h += `<div class="sum"><div class="big">${tot}</div><div><h3>${tot === 1 ? 'Sello' : 'Sellos'} para cuantificar${scopeName ? ` en ${esc(scopeName)}` : ''}</h3>
-      <div class="small muted">${tot !== seals.length ? `${seals.length} marcados en el plano${fSel && fm > 1 ? ` × ${fm} niveles (${esc(joinY(floorLevels(fSel)))})` : ', con plantas típicas multiplicadas'} · ` : ''}Pared ${nP} · Losa ${nL}</div></div>
-    <div class="typesum">${seals.length ? typeChips(seals, sealWeight) : '<span class="muted">Aún no hay sellos.</span>'}</div></div>`;
+      <div class="small muted">${totM !== seals.length ? `${seals.length} marcados en el plano${fSel && fm > 1 ? ` × ${fm} niveles (${esc(joinY(floorLevels(fSel)))})` : ', con plantas típicas multiplicadas'} · ` : ''}${manQ ? `${totM} con punto + ${manQ} de partidas manuales · ` : ''}Pared ${nP} · Losa ${nL}</div></div>
+    <div class="typesum">${withMan.length ? typeChips(withMan, sealWeight) : '<span class="muted">Aún no hay sellos.</span>'}</div></div>`;
   if (hasF && !filt && all.length) h += `<div class="floorsum">${groups.map(([id, name, l]) => { const fl = floorById(id), mu = floorMult(fl);
     return `<button class="fsum" data-act="sfilterSet" data-v="${id}"><span class="fname">${esc(name)}</span><b>${mu > 1 ? `${l.length} × ${mu} = ${l.length*mu}` : l.length}</b>${fl ? `<span class="lv">${mu === 1 ? 'Nivel' : 'Niveles'} ${esc(joinY(floorLevels(fl)))}</span>` : ''}<span class="typesum">${typeChips(l)}</span></button>`; }).join('')}</div>`;
   const pendD = S.marks.filter(m => m.type === 'seal' && m.st === 'pend' && m.diam).length;
@@ -159,6 +162,7 @@ export function renderSeals() {
           ${t.id === 'pend' ? '<span></span>' : `<button class="icon" data-act="catDel" title="Eliminar categoría" aria-label="Eliminar ${esc(t.name)}">${ICON.trash}</button>`}
           <button class="catsum${catSummary(t) ? '' : ' empty'}" data-act="catProps">${esc(catSummary(t) || 'Definir tipo de penetrante, geometría y espacio anular')}</button></li>`;
       }).join('')}</ul></div>`;
+  h += manualHtml();
   if (seals.length) {
     h += `<div class="sect"><header><h3>Lista de sellos</h3></header></div>`;
     if (hasF && !filt) h += groups.filter(g => g[2].length).map(([id, name, l]) => `<h4 class="grph">${esc(name)} <span>${l.length}</span></h4><ul class="sealList">${l.map(sealRow).join('')}</ul>`).join('');
@@ -222,9 +226,9 @@ export async function deleteCategory(id) {
   const uses = [];
   if (P) for (const sh of Object.values(P.sheets).filter(x => catKey(x) === ck)) {
     const st = sh === cur ? S : sh.state;
-    const k = st.marks.filter(m => m.type === 'seal' && m.st === id).length;
+    const k = st.marks.filter(m => m.type === 'seal' && m.st === id).length + (st.manual || []).filter(e => e.st === id).length;
     if (k) uses.push([sh === cur ? 'este plano' : sh.name, k]);
-  } else { const k = S.marks.filter(m => m.type === 'seal' && m.st === id).length; if (k) uses.push(['este plano', k]); }
+  } else { const k = S.marks.filter(m => m.type === 'seal' && m.st === id).length + (S.manual || []).filter(e => e.st === id).length; if (k) uses.push(['este plano', k]); }
   const n = uses.reduce((a, [, k]) => a + k, 0);
   if (n) {
     const others = uses.filter(([nm]) => nm !== 'este plano');
@@ -237,6 +241,7 @@ export async function deleteCategory(id) {
   const states = P ? [...new Set([S, ...Object.values(P.sheets).filter(x => catKey(x) === ck).map(x => x.state)])] : [S];
   for (const st of states) {
     st.marks.forEach(m => { if (m.type === 'seal' && m.st === id) m.st = 'pend'; if (m.type === 'table' && m.cats) m.cats = m.cats.filter(c => c !== id); });
+    (st.manual || []).forEach(e => { if (e.st === id) e.st = 'pend'; });
     st.layers.forEach(l => { if (l.st === id) l.st = 'pend'; });
   }
   S.sealTypes = S.sealTypes.filter(x => x.id !== id);
@@ -328,6 +333,9 @@ export function init() {
     else if (a === 'table') { closePanel(); setTool('table'); }
     else if (a === 'pdf') pdfDialog();
     else if (a === 'addCat') addCategory(false);
+    else if (a === 'manAdd') addManual();
+    else if (a === 'manPaste') pasteManual();
+    else if (a === 'manDel') manualDel(b.closest('tr').dataset.man);
     else if (a === 'addTray') addTrayCategory(false);
     else if (a === 'catDel') deleteCategory(b.closest('li').dataset.cat);
     else if (a === 'catProps') catPropsDialog(b.closest('li').dataset.cat);
@@ -344,6 +352,7 @@ export function init() {
   });
   ts.addEventListener('change', e => {
     if (e.target.dataset.act === 'sfilter') { S.sealFilter = e.target.value; save(); renderSeals(); return; }
+    if (e.target.dataset.mf) { manualEdit(e.target.closest('tr').dataset.man, e.target.dataset.mf, e.target.value); return; }
     const t = e.target, li = t.closest('li'); if (!li) return;
     if (li.dataset.cat) {
       const c = S.sealTypes.find(x => x.id === li.dataset.cat); if (!c) return;

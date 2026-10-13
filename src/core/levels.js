@@ -2,7 +2,7 @@
 import { esc, ST } from './constants.js';
 import { P, S } from './state.js';
 import { sealFloor } from '../canvas/tables.js';
-import { sealsSorted } from '../panels/sellos.js';
+import { allSeals } from '../panels/manual.js';
 import { baseName, saveFile } from '../export/files.js';
 import { toast } from '../ui/app.js';
 import { scopeSheets, secLabel, withState } from '../project/model.js';
@@ -33,7 +33,7 @@ export function joinY(list) { return list.length <= 1 ? (list[0] || '') : list.s
 export function defaultLevels(name) { const l = parseLevels(name); return l.length && l.every(x => /\d/.test(x)) ? l.join(', ') : ''; }
 
 // peso de cada sello: cuántos niveles representa la planta donde está
-export function sealWeight(m) { return S.floors.length ? floorMult(sealFloor(m)) : Math.max(1, parseLevels(S.levels || '').length); }
+export function sealWeight(m) { if (m.man) return m.q*m.lvs.length; return S.floors.length ? floorMult(sealFloor(m)) : Math.max(1, parseLevels(S.levels || '').length); }
 
 export function allLevels() {
   const out = [];
@@ -46,12 +46,12 @@ export function quantRows(scope = 'all') {
   const out = [];
   for (const sh of scopeSheets(scope)) withState(sh.state, () => {
     const map = new Map();
-    for (const m of sealsSorted()) {
+    for (const m of allSeals()) {
       const {lv, f, below} = sealLevels(m), t = ST[m.st];
       for (const l of lv) {
-        const key = [l, locOf(m), t.name, m.diam || '', m.sys || '', m.wall || ''].join('\u0001');
-        const r = map.get(key) || {sec:secLabel(sh), plano:sh.name, nivel:l || 'Sin nivel', ubic:LOC_NAME[locOf(m)], cat:t.name, diam:m.diam || '', sys:m.sys || '', wall:m.wall || '', planta:f ? f.name : '', below, n:0};
-        r.n++; map.set(key, r);
+        const key = [l, locOf(m), t.name, m.diam || '', m.sys || '', m.wall || '', !!m.man].join('\u0001');
+        const r = map.get(key) || {sec:secLabel(sh), plano:sh.name, nivel:l || 'Sin nivel', ubic:LOC_NAME[locOf(m)], cat:t.name, diam:m.diam || '', sys:m.sys || '', wall:m.wall || '', planta:f ? f.name : (m.man ? 'Partida manual' : ''), below, n:0};
+        r.n += m.q || 1; map.set(key, r);
       }
     }
     out.push(...map.values());
@@ -71,6 +71,7 @@ export function exportQuant(scope = 'all') {
 
 /* --- niveles: tuberías bajo losa --- */
 export function sealLevels(m) {
+  if (m.man) return {lv: m.lvs, f: null, below: false}; // partida manual: los niveles que se escribieron
   const f = S.floors.length ? sealFloor(m) : null;
   let lv = f ? floorLevels(f) : (S.floors.length ? [] : parseLevels(S.levels || ''));
   if (!lv.length) lv = [S.floors.length ? 'Fuera de las plantas' : ''];

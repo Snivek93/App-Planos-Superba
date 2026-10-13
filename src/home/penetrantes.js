@@ -6,7 +6,8 @@ import { dirty } from '../canvas/render.js';
 import { renderOpts, setTool } from '../editor/tools.js';
 import { centerOn } from '../canvas/view.js';
 import { renderLayers } from '../panels/capas.js';
-import { highlightSealRow, sealsSorted } from '../panels/sellos.js';
+import { highlightSealRow } from '../panels/sellos.js';
+import { allSeals } from '../panels/manual.js';
 import { setTab } from '../ui/app.js';
 import { LOC_NAME, locOf, sealLevels } from '../core/levels.js';
 import { anLabel, catProps, geomLabel, penShort } from '../export/penetrante.js';
@@ -26,10 +27,10 @@ export function lvSort(v) { return v === '' ? 1e9 : (/^-?\d+$/.test(v) ? +v : 1e
 export function penSeals() {
   const out = [];
   for (const sh of orderedSheets()) withState(sh.state, () => {
-    for (const m of sealsSorted()) {
+    for (const m of allSeals()) {
       const {lv, f, below} = sealLevels(m), t = ST[m.st], c = catProps(m.st), loc = locOf(m);
       out.push({sh, m, n:m.n, lv: lv.filter(x => x !== '').length ? lv : [''], planta: f ? f.name : '', below, loc, st:m.st, cat:t.name, color:t.color, hasProps: !!(c && c.L),
-        pen: c && c.L ? penShort(c.L) : '', geom: geomLabel(t, c, m) || '', an: c ? anLabel(c) : '', wall: loc === 'pared' ? (m.wall || '') : '', diam: m.diam || '', note: m.note || '', auto: !!m.auto});
+        pen: c && c.L ? penShort(c.L) : '', geom: geomLabel(t, c, m) || '', an: c ? anLabel(c) : '', wall: loc === 'pared' ? (m.wall || '') : '', diam: m.diam || '', note: (m.man ? 'Partida manual' + (m.note ? ' · ' : '') : '') + (m.note || ''), auto: !!m.auto, mq: m.q || 1, man: !!m.man});
     }
   });
   return out;
@@ -61,7 +62,7 @@ export function renderPenTable() {
   const rows0 = penFiltered(penSeals());
   // cantidad por nivel (chips)
   const perLv = new Map();
-  for (const r of rows0) for (const v of (penF.lv ? [penF.lv] : r.lv)) perLv.set(v, (perLv.get(v) || 0) + 1);
+  for (const r of rows0) for (const v of (penF.lv ? [penF.lv] : r.lv)) perLv.set(v, (perLv.get(v) || 0) + r.mq);
   const chips = [...perLv].sort((a, b) => lvSort(a[0]) - lvSort(b[0]) || natCmp(a[0], b[0])).map(([v, n]) => `<span class="hchip">${esc(lvTxt(v))} <b>${n}</b></span>`).join('');
   const catCell = r => `<button class="cat" data-pa="pcat" data-st="${r.st}" data-sh="${r.sh.id}" title="Editar tipo de penetrante, geometría y espacio anular de esta categoría"><span class="dot${r.loc === 'losa' ? ' sq' : ''}" style="--c:${r.color}"></span>${esc(r.cat)}</button>`;
   const penCell = r => r.hasProps ? esc(r.pen) : `<button class="linkbtn undef" data-pa="pcat" data-st="${r.st}" data-sh="${r.sh.id}">Definir…</button>`;
@@ -71,7 +72,7 @@ export function renderPenTable() {
     for (const r of rows0) for (const v of (penF.lv ? [penF.lv] : r.lv)) {
       const key = [v, r.loc, r.st, r.wall].join('\u0001');
       const g = map.get(key) || {...r, lvOne:v, q:0, sheets:new Set(), below:false};
-      g.q++; g.sheets.add(r.sh.name); if (r.below) g.below = true; map.set(key, g);
+      g.q += r.mq; g.sheets.add(r.sh.name); if (r.below) g.below = true; map.set(key, g);
     }
     rows = [...map.values()];
     cols = [
@@ -85,7 +86,7 @@ export function renderPenTable() {
       ['sheets', 'Planos', r => `<div class="wrap sub">${esc([...r.sheets].join(', '))}</div>`, (a, b) => natCmp([...a.sheets][0], [...b.sheets][0])],
       ['q', 'Cantidad', r => r.q, (a, b) => a.q - b.q, 'num']];
   } else {
-    rows = rows0.map(r => ({...r, q: penF.lv ? 1 : r.lv.length}));
+    rows = rows0.map(r => ({...r, q: (penF.lv ? 1 : r.lv.length)*r.mq}));
     cols = [
       ['sheet', 'Plano', r => `${esc(r.sh.name)}<div class="sub">${esc(secLabel(r.sh))}</div>`, (a, b) => natCmp(a.sh.name, b.sh.name) || a.n - b.n],
       ['n', 'No.', r => r.n, (a, b) => a.n - b.n, 'num'],

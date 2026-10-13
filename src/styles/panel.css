@@ -199,3 +199,10 @@ input[type=range]{width:100%;accent-color:var(--tinta)}
 .sealList .mem{grid-column:2 / -1;margin:0;display:flex;align-items:center;gap:6px;font-size:13px}
 .sealList .mem input{width:auto}
 #opts label.chk{display:inline-flex;align-items:center;gap:5px;margin:0;white-space:nowrap}
+/* partidas manuales */
+.mantbl{overflow-x:auto;margin-top:4px}
+.mantbl .fst{font-size:13px;margin-top:0}
+.mantbl .fst td{padding:3px 4px;white-space:nowrap}
+.mantbl .fst select{max-width:170px;height:32px}
+.mantbl .fst input{height:32px;padding:0 6px}
+.mantbl .fst td:nth-child(5) input{width:100%;min-width:140px}

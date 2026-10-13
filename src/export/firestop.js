@@ -2,7 +2,7 @@
 import { esc, ST, trayDims, trayLabel } from '../core/constants.js';
 import { P, S } from '../core/state.js';
 import { pushUndo } from '../core/undo.js';
-import { sealsSorted } from '../panels/sellos.js';
+import { allSeals } from '../panels/manual.js';
 import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
@@ -138,20 +138,20 @@ export async function fsDialog() {
       return out;
     }});
   if (!v) return;
-  if (v.moves.length) { pushUndo(); for (const [g, loc] of v.moves) g.list.forEach(m => m.loc = loc); changed(); }
+  if (v.moves.length) { pushUndo(); for (const [g, loc] of v.moves) g.list.forEach(m => { m.loc = loc; if (m.src) m.src.loc = loc; }); changed(); }
   S.fsx = {walls:{...cfg.walls, ...v.walls}, losa:v.losa, cats:{...cfg.cats, ...v.cats}}; save();
   exportFS(S.fsx, v.scope);
 }
 
 export function fsRows(cfg, sh) {
   const map = new Map();
-  for (const m of sealsSorted()) {
+  for (const m of allSeals()) {
     const {lv: levels, f, below} = sealLevels(m);
     const loc = locOf(m), wall = loc === 'pared' ? (m.wall || '(sin tipo de pared)') : '';
     for (const lv of levels) {
       const mem = !!m.mem, td = trayDims(m.diam), key = [lv, loc, m.st, wall, mem, td ? trayLabel(td) : ''].join('\u0001');
-      const r = map.get(key) || {lv, loc, st:m.st, wall, mem, td, n:0, planta: f ? f.name : '', auto:0, below};
-      r.n++; if (m.auto) r.auto++; map.set(key, r);
+      const r = map.get(key) || {lv, loc, st:m.st, wall, mem, td, n:0, planta: f ? f.name : '', auto:0, man:0, below};
+      r.n += m.q || 1; if (m.auto) r.auto++; if (m.man) r.man += m.q; map.set(key, r);
     }
   }
   const rows = [...map.values()].sort((a, b) => String(a.lv).localeCompare(String(b.lv), 'es', {numeric:true}) || a.loc.localeCompare(b.loc) || String(a.wall).localeCompare(String(b.wall)));
@@ -162,7 +162,7 @@ export function fsRows(cfg, sh) {
     const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray ? '' : (c.D ?? '');
     const tname = tray && !t.name.includes(trayLabel(r.td)) ? `${t.name} ${trayLabel(r.td)}` : t.name;
     const zona = (r.loc === 'losa' ? `${tname} · Losa` : `${tname} · ${r.wall}`) + (r.mem ? ' · Membrana' : '');
-    const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.mem ? 'penetración de membrana (atraviesa una sola cara)' : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : ''].filter(Boolean).join(' · ');
+    const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.mem ? 'penetración de membrana (atraviesa una sola cara)' : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : '', r.man ? `${r.man} de partidas manuales` : ''].filter(Boolean).join(' · ');
     const nivel = /^-?\d+(\.\d+)?$/.test(r.lv) ? +r.lv : r.lv;
     const nb = x => x === '' || x == null ? undefined : +x;
     const J = c.J === '' || c.J == null ? (tray ? 0.4 : 0) : (+c.J > 1 ? +c.J/100 : +c.J);
