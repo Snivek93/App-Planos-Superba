@@ -56,8 +56,13 @@ export function itemHtml(sh, T) {
 /* Cambiar el nombre directamente en la tarjeta. */
 export function startRename(li) {
   const sh = P.sheets[li.dataset.sheet]; if (!sh) return;
-  const nm = li.querySelector('.tname'); if (!nm || nm.querySelector('input')) return;
+  if (!li.querySelector('.tname') || li.querySelector('.tname input')) return;
   li.setAttribute('draggable', 'false');
+  // el nombre está dentro de un botón: con la barra espaciadora el navegador "presiona" el botón y abre el plano.
+  // Mientras se edita, el botón se cambia por un elemento normal (renderProject lo restituye al terminar).
+  const btn = li.querySelector('.tmain');
+  if (btn && btn.tagName === 'BUTTON') { const d = document.createElement('div'); d.className = btn.className; d.innerHTML = btn.innerHTML; btn.replaceWith(d); }
+  const nm = li.querySelector('.tname');
   nm.innerHTML = `<input class="trename" value="${esc(sh.name)}" aria-label="Nombre del plano">`;
   const inp = nm.querySelector('input');
   const stop = e => e.stopPropagation();
@@ -70,6 +75,7 @@ export function startRename(li) {
     renderProject();
   };
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); e.stopPropagation(); });
+  inp.addEventListener('keyup', stop); inp.addEventListener('keypress', stop);
   inp.addEventListener('blur', () => finish(true));
   inp.focus(); inp.select();
 }
