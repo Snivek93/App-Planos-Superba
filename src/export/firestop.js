@@ -7,7 +7,7 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { joinY, locOf, sealLevels } from '../core/levels.js';
-import { curSheet, projectSeals, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
+import { curSheet, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
 
 /* ---------- Excel para Firestop Suite (formato hoja CALCULADORA) ---------- */
 export const FS_OPTS_L = ["Tubería Metal","Tubería Metal Aislado","Tubería Cobre Aislado HVAC","Tubería EMT","Tubería Combustible (PVC, CPVC, PEX, PP-R)","Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)","Bandeja de Cables","Cable Armado","Cables en Paso Repenetrable","Cables Sueltos","Caja Electromecánica UL","Ducto Rectangular","Ducto Rectangular Aislado","Ducto Redondo","Ducto Redondo Aislado","Pasante Múltiple","Vacío","Viga W","Viga Canal","Viga Tubo Rectangular"];
@@ -20,7 +20,7 @@ export const FS_OPTS_P = ["Pasta FS ONE MAX","Cinta con Collar Metálico CP 648-
 
 export const FS_K = {"Tubería Metal":"Tubería","Tubería Metal Aislado":"Tubería Aislada","Tubería Cobre Aislado HVAC":"Tubería Aislada","Tubería EMT":"Tubería","Tubería Combustible (PVC, CPVC, PEX, PP-R)":"Tubería","Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)":"Tubería Aislada","Bandeja de Cables":"Bandeja","Cable Armado":"Cable","Cables en Paso Repenetrable":"Cable","Cables Sueltos":"Cable","Caja Electromecánica UL":"Caja Electromecánica UL","Ducto Rectangular":"Ducto Rectangular","Ducto Rectangular Aislado":"Ducto Rectangular","Ducto Redondo":"Ducto Redondo","Ducto Redondo Aislado":"Ducto Redondo","Pasante Múltiple":"Múltiple","Vacío":"Vacío","Viga W":"Viga","Viga Canal":"Viga","Viga Tubo Rectangular":"Viga"};
 
-export const MM_TO_IN = {13:0.5, 16:0.5, 19:0.75, 20:0.75, 25:1, 32:1.25, 38:1.5, 40:1.5, 50:2, 60:2, 63:2.5, 64:2.5, 75:3, 100:4, 110:4, 125:5, 150:6, 160:6, 200:8, 250:10, 300:12};
+export const MM_TO_IN = {13:0.5, 16:0.5, 19:0.75, 20:0.75, 25:1, 32:1.25, 38:1.5, 40:1.5, 50:2, 60:2, 63:2.5, 64:2.5, 65:2.5, 75:3, 80:3, 90:3, 100:4, 110:4, 125:5, 150:6, 160:6, 200:8, 250:10, 300:12};
 
 export function diamToIn(txt) {
   if (!txt) return '';
@@ -77,8 +77,17 @@ export function fsSyncGeom(tr) {
 }
 
 export async function fsDialog() {
-  const seals = projectSeals('all');
+  // cada plano tiene su propio juego de categorías: el nombre de cada una se toma con el estado de su plano
+  // (si no, las categorías de otras secciones salían como "Por definir" en esta lista)
+  const seals = [], tinfo = {};
+  for (const sh of scopeSheets('all')) withState(sh.state, () => {
+    for (const m of allSeals()) {
+      seals.push(m);
+      if (!tinfo[m.st]) tinfo[m.st] = {t: ST[m.st], set: sh.kind === 'arq' ? 'Arquitectónicos' : secLabel(sh), i: S.sealTypes.findIndex(t => t.id === m.st)};
+    }
+  });
   if (!seals.length) return toast('Todavía no hay sellos para exportar.');
+  const tOf = id => tinfo[id] || {t: ST[id], set: '', i: 0};
   const cfg = S.fsx || (S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}});
   const wallNames = [...new Set(seals.filter(m => locOf(m) === 'pared').map(m => m.wall || '(sin tipo de pared)'))];
   const wallRows = wallNames.map(w => {
@@ -92,9 +101,9 @@ export async function fsDialog() {
     if (!g) { g = {st:m.st, loc:locOf(m), list:[]}; groups.push(g); }
     g.list.push(m);
   }
-  groups.sort((a, b) => S.sealTypes.findIndex(t => t.id === a.st) - S.sealTypes.findIndex(t => t.id === b.st) || a.loc.localeCompare(b.loc));
+  groups.sort((a, b) => tOf(a.st).set.localeCompare(tOf(b.st).set, 'es') || tOf(a.st).i - tOf(b.st).i || a.loc.localeCompare(b.loc));
   const rowsHtml = groups.map((g, gi) => {
-    const t = ST[g.st], sysTxt = [...new Set(g.list.map(m => m.sys).filter(Boolean))].join(', ');
+    const ti = tOf(g.st), t = ti.t, sysTxt = [...new Set(g.list.map(m => m.sys).filter(Boolean))].join(', ');
     const dTxt = g.list.find(m => m.diam)?.diam || t.name;
     const c = {...(cfg.cats[g.st] || {})};
     const td = trayDims(g.list.find(m => trayDims(m.diam))?.diam || t.name);
@@ -102,7 +111,7 @@ export async function fsDialog() {
     if (c.D == null) c.D = td ? '' : diamToIn(dTxt);
     if (td && (c.J == null || c.J === '')) c.J = 40;   // canasta sin % de ocupación: 40 % de base
     const L = c.L || guessL(t.name + ' ' + sysTxt), P = c.P || guessP(L, c.D);
-    return `<tr data-g="${gi}"><td><span class="ldot" style="--c:${t.color}"></span> <b>${esc(t.name)}</b> <span class="muted">(${g.list.length})</span>${sysTxt ? `<div class="small muted">${esc(sysTxt)}</div>` : ''}</td>
+    return `<tr data-g="${gi}"><td><span class="ldot" style="--c:${t.color}"></span> <b>${esc(t.name)}</b> <span class="muted">(${g.list.length})</span>${ti.set || sysTxt ? `<div class="small muted">${esc([ti.set, sysTxt].filter(Boolean).join(' · '))}</div>` : ''}</td>
       <td>${fsSel('L', FS_OPTS_L, L)}</td>
       <td>${fsGeomCell(c, L)}</td>
       <td><input data-f="I" value="${c.I ?? 0}" inputmode="decimal" style="width:56px"></td>
