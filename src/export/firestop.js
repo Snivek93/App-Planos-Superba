@@ -124,8 +124,9 @@ export async function fsDialog() {
       <td>${fsSel('P', FS_OPTS_P, P)}</td></tr>`;
   }).join('');
   const cs = curSheet();
-  const scopeHtml = `<label class="row"><span>Qué exportar</span><select id="fsScope"><option value="all">Todo el proyecto</option>${cs ? `<option value="cur">Solo este plano: ${esc(cs.name)}</option>` : ''}${P.sections.filter(s => sheetsOf(s.id).length).map(s => `<option value="sec:${s.id}">Solo ${esc(s.name)}</option>`).join('')}</select></label>`;
-  const html = scopeHtml + `<p class="muted small" style="margin:0">Excel con el formato de la hoja CALCULADORA (datos desde la fila 23), listo para "Importar Excel" en Firestop Suite. Una fila por nivel, barrera, tipo de sello y tipo de pared. Los valores quedan guardados para la próxima vez. Las canastas salen como Bandeja de Cables con la dimensión A×B de cada sello (si un sello no la tiene, se usa la de la categoría).</p>
+  const scopeHtml = `<label class="row"><span>Qué exportar</span><select id="fsScope"><option value="all">Todo el proyecto</option>${cs ? `<option value="cur">Solo este plano: ${esc(cs.name)}</option>` : ''}${P.sections.filter(s => sheetsOf(s.id).length).map(s => `<option value="sec:${s.id}">Solo ${esc(s.name)}</option>`).join('')}</select></label>
+    <label class="row"><span>Barrera</span><select id="fsLoc">${[['', 'Pared y losa (completo)'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<option value="${v}"${(P.locView || '') === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>`;
+  const html = scopeHtml + `<p class="muted small" style="margin:0">Excel con el formato de la hoja CALCULADORA (datos desde la fila 23), listo para "Importar Excel" en Firestop Suite. En Zona va la aplicación (Mecánico Agua potable, Eléctrico Acometida…) y se suman en una sola fila los sellos iguales: mismo nivel, zona, geometría, penetrante, barrera, F rating y producto. Los valores quedan guardados para la próxima vez. Las canastas salen como Bandeja de Cables con la dimensión A×B de cada sello (si un sello no la tiene, se usa la de la categoría).</p>
     <div class="fsbox"><b>Penetrantes</b><table class="fst"><tr><th>Categoría</th><th>Tipo de penetrante</th><th>Geometría</th><th>Espacio anular (in)</th><th>Barrera</th><th>Material Hilti</th></tr>${rowsHtml}</table></div>
     <div class="fsbox"><b>Paredes</b><table class="fst"><tr><th>Tipo de pared</th><th>Material de barrera</th><th>F Rating</th></tr>${wallRows || '<tr><td colspan="3" class="muted">No hay sellos en pared.</td></tr>'}</table></div>
     <div class="fsbox"><b>Losa</b><table class="fst"><tr data-losa="1"><td>Entrepiso</td><td>${fsSel('N', FS_OPTS_N, cfg.losa.N)}</td><td>${fsSel('O', FS_OPTS_O, cfg.losa.O)}</td></tr></table></div>`;
@@ -135,7 +136,7 @@ export async function fsDialog() {
       r.querySelectorAll('tr[data-g]').forEach(tr => { fsSyncGeom(tr); tr.querySelector('[data-f=L]').onchange = () => fsSyncGeom(tr); });
     },
     read: r => {
-      const out = {walls:{}, losa:{...cfg.losa}, cats:{}, moves:[], scope: r.querySelector('#fsScope').value};
+      const out = {walls:{}, losa:{...cfg.losa}, cats:{}, moves:[], scope: r.querySelector('#fsScope').value, loc: r.querySelector('#fsLoc').value};
       r.querySelectorAll('tr[data-wall]').forEach(tr => out.walls[tr.dataset.wall] = {N: tr.querySelector('[data-f=N]').value, O: tr.querySelector('[data-f=O]').value});
       const lt = r.querySelector('tr[data-losa]'); if (lt) out.losa = {N: lt.querySelector('[data-f=N]').value, O: lt.querySelector('[data-f=O]').value};
       r.querySelectorAll('tr[data-g]').forEach(tr => {
@@ -154,7 +155,7 @@ export async function fsDialog() {
   if (!v) return;
   if (v.moves.length) { pushUndo(); for (const [g, loc] of v.moves) g.list.forEach(m => { m.loc = loc; if (m.src) m.src.loc = loc; }); changed(); }
   S.fsx = {walls:{...cfg.walls, ...v.walls}, losa:v.losa, cats:{...cfg.cats, ...v.cats}}; save();
-  exportFS(S.fsx, v.scope);
+  exportFS(S.fsx, v.scope, v.loc);
 }
 
 export function fsRows(cfg, sh) {
@@ -174,14 +175,43 @@ export function fsRows(cfg, sh) {
     // canasta o bandeja: la dimensión A×B viene del sello (en mm) y se exporta en cm como Bandeja de Cables
     const tray = r.td ? {F: r.td.a/10, G: r.td.b/10} : null;
     const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray ? '' : (c.D ?? '');
-    const tname = tray && !t.name.includes(trayLabel(r.td)) ? `${t.name} ${trayLabel(r.td)}` : t.name;
-    const zona = (r.loc === 'losa' ? `${tname} · Losa` : `${tname} · ${r.wall}`) + (r.mem ? ' · Membrana' : '');
-    const nota = [sh ? `${secLabel(sh)} · ${sh.name}` : '', r.mem ? 'penetración de membrana (atraviesa una sola cara)' : '', r.planta ? `Planta ${r.planta}` : '', r.below ? 'tubería bajo losa (pared del nivel inferior)' : '', r.auto ? `${r.auto} detectado${r.auto === 1 ? '' : 's'} en planos` : '', r.man ? `${r.man} de partidas manuales` : ''].filter(Boolean).join(' · ');
+    // Zona: la aplicación y su subaplicación (Mecánico Agua potable, Eléctrico Acometida…). Penetrante, nivel,
+    // barrera y material ya van en sus columnas. La penetración de membrana se marca porque cambia el sellado.
+    const zona = ((sh ? zonaOf(sh) : '') || t.name) + (r.mem ? ' (membrana)' : '');
+    const meta = {plano: sh ? sh.name : '', planta: r.planta, below: r.below, auto: r.auto, man: r.man, wall: r.loc === 'pared' ? r.wall : '', cat: t.name};
     const nivel = /^-?\d+(\.\d+)?$/.test(r.lv) ? +r.lv : r.lv;
     const nb = x => x === '' || x == null ? undefined : +x;
     const J = c.J === '' || c.J == null ? (tray ? 0.4 : 0) : (+c.J > 1 ? +c.J/100 : +c.J);
     return [zona, nivel, r.n, nb(D), tray || c.E === '' || c.E == null ? 0 : +c.E, nb(tray ? tray.F : c.F), nb(tray ? tray.G : c.G), tray ? undefined : nb(c.H),
-      c.I === '' || c.I == null ? 0 : +c.I, J, FS_K[L] || '', L, r.loc === 'losa' ? 'Entrepiso' : 'Pared', w.N, w.O, c.P || guessP(L, D), undefined, nota];
+      c.I === '' || c.I == null ? 0 : +c.I, J, FS_K[L] || '', L, r.loc === 'losa' ? 'Entrepiso' : 'Pared', w.N, w.O, c.P || guessP(L, D), undefined, '', meta];
+  });
+}
+
+/* "Mecánico Agua potable", "Supresión de incendios", "Eléctrico Acometida" */
+export function zonaOf(sh) { return secLabel(sh).replace(/\s*›\s*/g, ' ').trim(); }
+
+/* Une las filas que solo se diferencian en de qué plano, planta o tipo de pared vienen: misma zona, nivel,
+   geometría, penetrante, barrera, material de barrera, F rating y producto → una fila con la suma. */
+export function mergeFsRows(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = JSON.stringify(r.slice(0, 16).map((v, i) => i === 2 ? 0 : v ?? ''));
+    let g = map.get(key);
+    if (!g) { g = {row: r.slice(0, 18), metas: []}; g.row[2] = 0; map.set(key, g); }
+    g.row[2] += r[2]; g.metas.push(r[18] || {});
+  }
+  return [...map.values()].map(({row, metas}) => {
+    const uniq = f => [...new Set(metas.map(m => m[f]).filter(Boolean))];
+    const auto = metas.reduce((a, m) => a + (m.auto || 0), 0), man = metas.reduce((a, m) => a + (m.man || 0), 0);
+    const walls = uniq('wall'), planos = uniq('plano');
+    row[17] = [
+      uniq('cat').join(', '),
+      walls.length ? `Pared: ${walls.join(', ')}` : '',
+      metas.some(m => m.below) ? 'incluye tubería bajo losa (pared del nivel inferior)' : '',
+      man ? `${man} de partidas manuales` : '',
+      planos.length ? `${planos.length === 1 ? 'Plano' : 'Planos'}: ${planos.join(', ')}` : ''
+    ].filter(Boolean).join(' · ');
+    return row;
   });
 }
 
@@ -236,27 +266,30 @@ export function xlsxBlob(sheetName, aoa, widths, boldRows) {
   ]);
 }
 
-export function exportFS(cfg, scope = 'all') {
+export function exportFS(cfg, scope = 'all', loc = '') {
   const HEADERS = ["Zona o Descripción", "Nivel", "Cantidad Penetrantes\n(und)", "Diámetro \nTubería o Cable\n(in)", "Espesor del Aislamiento \n(in)",
     "Dimensión A\n(cm)", "Dimensión B\n(cm)", "Profundidad \nCajas Electricas\n(cm)", "Espacio Anular\n(in)", "Porcentaje de Ocupación (%)",
     "Tipo de penetrante", "Tipo de Penetrante", "Tipo de Barrera", "Material de Barrera", "F Rating", "Material Cortafuego Hilti", "NORMATIVA\nSistemas UL 1479", "Nota"];
   const sheets = scopeSheets(scope);
-  const rows = [];
-  for (const sh of sheets) rows.push(...withState(sh.state, () => fsRows(cfg, sh)));
+  const raw = [];
+  for (const sh of sheets) raw.push(...withState(sh.state, () => fsRows(cfg, sh)));
+  // solo pared o solo losa (columna Tipo de Barrera: Pared / Entrepiso)
+  const rows = mergeFsRows(raw).filter(r => !loc || (loc === 'losa') === (r[12] === 'Entrepiso'));
   const lvKey = v => typeof v === 'number' ? v : (parseFloat(v) || 1e9);
-  rows.sort((a, b) => lvKey(a[1]) - lvKey(b[1]) || String(a[1]).localeCompare(String(b[1])) || String(a[0]).localeCompare(String(b[0]), 'es', {numeric:true}));
-  if (!rows.length) return toast('No hay sellos en lo que eligió exportar.');
+  rows.sort((a, b) => lvKey(a[1]) - lvKey(b[1]) || String(a[1]).localeCompare(String(b[1])) || String(a[0]).localeCompare(String(b[0]), 'es', {numeric:true})
+    || String(a[12]).localeCompare(String(b[12])) || String(a[11]).localeCompare(String(b[11])) || (+a[3] || 0) - (+b[3] || 0) || (+a[5] || 0) - (+b[5] || 0));
+  if (!rows.length) return toast(`No hay sellos${loc ? ' en ' + loc : ''} en lo que eligió exportar.`);
   const levels = [...new Set(rows.map(r => r[1]).filter(v => v !== '' && v != null))];
   const aoa = [];
   for (let i = 0; i < 21; i++) aoa.push([]);
   aoa[0] = ['Exportado desde Superposición de planos (sellos cortafuego)'];
   aoa[0] = [`${P ? P.name : 'Proyecto'} · exportado desde Superposición de planos (sellos cortafuego)`];
-  aoa[1] = [`Generado: ${new Date().toLocaleDateString('es-CR')} · ${sheets.length} ${sheets.length === 1 ? 'plano' : 'planos'}${levels.length ? ` · Niveles: ${joinY(levels.map(String))}` : ''}`];
+  aoa[1] = [`Generado: ${new Date().toLocaleDateString('es-CR')}${loc ? ` · Solo ${loc}` : ''} · ${sheets.length} ${sheets.length === 1 ? 'plano' : 'planos'}${levels.length ? ` · Niveles: ${joinY(levels.map(String))}` : ''}`];
   aoa[2] = [`${rows.length} filas · ${rows.reduce((a, r) => a + r[2], 0)} sellos`];
   aoa.push(HEADERS);
   for (const r of rows) aoa.push(r);
   const blob = xlsxBlob('CALCULADORA', aoa, [26, 9, 10, 10, 10, 10, 10, 10, 10, 10, 18, 40, 12, 16, 10, 34, 18, 34], [21]);
-  saveFile(baseName() + '-firestop-suite.xlsx', blob, blob.type);
+  saveFile(baseName() + '-firestop-suite' + (loc ? '-' + loc : '') + '.xlsx', blob, blob.type);
   toast(`Excel listo: ${rows.length} filas. En Firestop Suite use "Importar Excel".`);
 }
 

@@ -15,7 +15,9 @@
 .hchip b{color:var(--rojo);font-variant-numeric:tabular-nums}
 .hacts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .hacts .btn{height:38px}
-.hview{margin:0 0 14px;background:var(--panel)} .hview button{height:38px;padding:0 16px;font-weight:500}
+.hbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin:0 0 14px}
+.hview{margin:0;background:var(--panel)}
+.hloc{background:var(--panel)} .hloc button{height:38px;padding:0 14px} .hview button{height:38px;padding:0 16px;font-weight:500}
 .hview .n{display:inline-block;min-width:20px;padding:0 6px;margin-left:6px;border-radius:999px;background:var(--rojo);color:#fff;font:700 12px/18px "Barlow Semi Condensed",Barlow,sans-serif}
 .pbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .pbar select{height:36px;max-width:240px}
@@ -133,6 +135,8 @@
 @media (max-width:640px){#lvlSel,#aViewSel{max-width:34vw;font-size:13px;padding:0 2px}}
 .hchip.sub{background:transparent;border-style:dashed;font-size:12.5px;color:var(--tinta-2)}
 .hchip.sub b{color:var(--tinta)}
-.hsub > header input[data-pa=subName]{flex:0 1 auto;width:auto;field-sizing:content;min-width:4ch}
+.hsub > header input[data-pa=subName],.hsec > header input[data-pa=secName]{flex:0 1 auto;width:auto;field-sizing:content;min-width:4ch}
+.hsec > header .pcount{margin-left:4px}
+.hsec > header > .pcount + .icon,.hsec > header > input + .icon{margin-left:auto}
 .hsub > header .pcount{margin-left:4px}
 .hsub > header .subbelow{margin-left:auto}
