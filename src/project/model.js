@@ -32,10 +32,14 @@ export let curTab = null;
 
 export let homeOn = false;
 
+/* lo que se hace solo al llegar al inicio (lo registra project/wallsweep.js) */
+export const homeHooks = {onShow: null};
 export function showHome() {
-  if (P.active) closeSheet();
+  // con el inicio ya a la vista, un plano "activo" es el que se está leyendo por detrás (wallsweep): no se cierra
+  if (P.active && !homeOn) closeSheet();
   homeOn = true; $('#home').hidden = false; $('#menu').hidden = true; closePanel();
   renderProject(); save();
+  if (homeHooks.onShow) setTimeout(() => { if (homeOn) homeHooks.onShow(); }, 1500);
 }
 
 export function hideHome() { homeOn = false; $('#home').hidden = true; }

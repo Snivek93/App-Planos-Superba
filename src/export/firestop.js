@@ -7,9 +7,9 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { joinY, locOf, sealLevels } from '../core/levels.js';
-import { curSheet, scopeSheets, secLabel, sheetsOf, showHome, withState } from '../project/model.js';
-import { autoWalls, NO_WALL, wallsPending } from '../detect/wall.js';
-import { openSheet } from '../project/sheets.js';
+import { curSheet, homeOn, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
+import { NO_WALL } from '../detect/wall.js';
+import { sweepWalls } from '../project/wallsweep.js';
 
 /* ---------- Excel para Firestop Suite (formato hoja CALCULADORA) ---------- */
 export const FS_OPTS_L = ["Tubería Metal","Tubería Metal Aislado","Tubería Cobre Aislado HVAC","Tubería EMT","Tubería Combustible (PVC, CPVC, PEX, PP-R)","Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)","Bandeja de Cables","Cable Armado","Cables en Paso Repenetrable","Cables Sueltos","Caja Electromecánica UL","Ducto Rectangular","Ducto Rectangular Aislado","Ducto Redondo","Ducto Redondo Aislado","Pasante Múltiple","Vacío","Viga W","Viga Canal","Viga Tubo Rectangular"];
@@ -78,22 +78,10 @@ export function fsSyncGeom(tr) {
   tr.querySelectorAll('.gi').forEach(el => el.hidden = !show[el.dataset.g]);
 }
 
-/* Antes de exportar: los planos con sellos de pared sin tipo de pared se abren uno por uno para tomar el tipo
-   de pared del plano A (o panel de yeso, 2 horas, si no hay pared cortafuego debajo). Al final vuelve a donde estaba. */
-async function sweepWalls() {
-  const pend = scopeSheets('all').filter(sh => wallsPending(sh.state) && !sh.initB && !sh.state.floors.some(f => f.pending));
-  if (!pend.length) return;
-  const from = P.active;
-  for (let i = 0; i < pend.length; i++) {
-    toast(`Completando el tipo de pared de los sellos: plano ${i + 1} de ${pend.length} (${pend[i].name})…`);
-    try { await openSheet(pend[i].id, {noB:true}); await autoWalls(); } catch (e) { /* ese plano queda con el valor por defecto */ }
-  }
-  if (from && P.sheets[from]) await openSheet(from); else showHome();
-  save();
-}
-
 export async function fsDialog() {
-  await sweepWalls();
+  // antes de exportar se completa el tipo de pared de los planos que falten (sin salir del inicio si se está ahí)
+  if (homeOn) { await sweepWalls({quiet: true}); await sweepWalls({quiet: true, all: true}); }
+  else await sweepWalls({all: true});
   // cada plano tiene su propio juego de categorías: el nombre de cada una se toma con el estado de su plano
   // (si no, las categorías de otras secciones salían como "Por definir" en esta lista)
   const seals = [], tinfo = {};

@@ -32,6 +32,7 @@ import { init as initProjectSheets } from './project/sheets.js';
 import { init as initHomeHome } from './home/home.js';
 import { init as initHomeDragdrop } from './home/dragdrop.js';
 import { init as initHomeEmpty } from './home/empty.js';
+import { init as initProjectWallsweep } from './project/wallsweep.js';
 import { init as initBoot } from './boot.js';
 import { registerPWA, handleLaunchFiles } from './pwa.js';
 import { S, P, RT, view } from './core/state.js';
@@ -64,6 +65,7 @@ initProjectSheets();
 initHomeHome();
 initHomeDragdrop();
 initHomeEmpty();
+initProjectWallsweep();
 initBoot();
 
 registerPWA();

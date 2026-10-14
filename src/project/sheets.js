@@ -23,17 +23,17 @@ import { autoWalls } from '../detect/wall.js';
 /* --- abrir hojas --- */
 export async function openSheet(id, opt = {}) {
   const sh = P.sheets[id]; if (!sh) return;
-  commitShared(); hideHome();
+  // opt.quiet: se abre por detrás sin salir del inicio (para completar datos de varios planos seguidos)
+  commitShared(); if (!opt.quiet) hideHome();
   if (P.active !== id) setViewLevel(null);
-  P.active = id; P.last = id; stateVars.S = sh.state;
+  P.active = id; if (!opt.quiet) P.last = id; stateVars.S = sh.state;
   if (sh.kind === 'pair') injectShared(sh);
   sel.clear(); stateVars.cur = null; stateVars.align = null; floorsVars.solo = null; floorsVars.floorDraft = null; stateVars.gesture = null; stateVars.undoStack = []; stateVars.redoStack = [];
   pathCache.clear();
   clearExtras(); RT.A = RT_BLANK(); RT.B = RT_BLANK();
   if (S.plans.A.fileId) RT.A.loading = true;
   if (sh.kind === 'pair') setupExtras(sh);
-  setTool('select'); renderAll();
-  if (isMobile || innerWidth <= 820) closePanel();
+  if (!opt.quiet) { setTool('select'); renderAll(); if (isMobile || innerWidth <= 820) closePanel(); }
   // A y B se cargan a la vez (B espera a A solo la primera vez, para ajustar su escala)
   const initB = opt.initB || sh.initB, loads = [];
   if (S.plans.A.fileId) loads.push(loadPlanFile('A', S.plans.A.fileId, S.plans.A.page));
@@ -45,7 +45,7 @@ export async function openSheet(id, opt = {}) {
   }
   await Promise.all(loads);
   // solo lectura del plano A: no se ajusta nada que dependa del plano B (escala, plantas, diámetros)
-  if (opt.noB) { if (P.active === id) { renderAll(); trimInactive(); } return; }
+  if (opt.noB) { if (P.active === id) { if (!opt.quiet) renderAll(); trimInactive(); } return; }
   if (sh.initB) { delete sh.initB; save(); }
   if (P.active !== id) return;
   if (syncLevelFloors(sh) && S.floors.some(f => f.src)) toast('Se crearon las plantas de los niveles elegidos. Revise en Planos que cada una calce con el plano B.');
