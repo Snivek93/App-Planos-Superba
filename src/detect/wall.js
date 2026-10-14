@@ -1,7 +1,8 @@
 /* Tipo de pared de un sello: se lee del plano A en el punto del sello (las mismas paredes cortafuego elegidas
    en Detección). Sirve para los sellos puestos a mano, que no traen tipo de pared, y así el Excel de Firestop
    Suite puede asignar el material (concreto o panel de yeso) y el F rating de esa pared. */
-import { S } from '../core/state.js';
+import { RT, S } from '../core/state.js';
+import { locOf } from '../core/levels.js';
 import { baseW, toWorld } from '../core/geometry.js';
 import { atOf, frameOf } from '../plans/floors.js';
 import { akOf, extraFireRules } from '../plans/extraA.js';
@@ -11,6 +12,8 @@ import { paintRules } from './cross.js';
 import { M } from '../core/geometry.js';
 
 const LINT = 'Cargador sobre puerta', ADD = 'Pared agregada a mano';
+/* sello de pared sin pared cortafuego marcada debajo (o plano sin plano A): se toma como panel de yeso de 2 horas */
+export const NO_WALL = 'Sin pared marcada en el plano A';
 
 export function fireRulesOf(k) { return k === 'A' ? (S.auto.fire || []).filter(r => r.on) : extraFireRules(k).filter(r => r.on); }
 
@@ -21,7 +24,7 @@ export function wallNames() {
   (S.auto.fire || []).filter(r => r.on).forEach(r => add(r.name));
   for (const f of S.floors) if (akOf(f) !== 'A') fireRulesOf(akOf(f)).forEach(r => add(r.name));
   S.marks.filter(m => m.type === 'seal' && m.wall).forEach(m => add(m.wall));
-  add(LINT); add(ADD);
+  add(LINT); add(ADD); add(NO_WALL);
   return out;
 }
 
@@ -64,13 +67,59 @@ export async function wallOf(m) {
   return wallAtWorld(toWorld(frameOf(m), m.pts[0]), f);
 }
 
-/* completa el tipo de pared de los sellos de pared que no lo tienen; devuelve cuántos se completaron */
-export async function fillWalls(list) {
+/* completa el tipo de pared de los sellos de pared que no lo tienen; devuelve cuántos se completaron.
+   Con def, los que no están sobre una pared cortafuego quedan como NO_WALL (panel de yeso, 2 horas). */
+export async function fillWalls(list, def = false) {
   let n = 0;
   for (const m of list) {
     if (m.type !== 'seal' || m.loc === 'losa' || m.wall) continue;
-    const w = await wallOf(m);
-    if (w) { m.wall = w; n++; }
+    let w = ''; try { w = await wallOf(m); } catch (e) { w = ''; }
+    if (w) { m.wall = w; delete m.wallNone; n++; }
+    else if (def) { m.wall = NO_WALL; m.wallNone = true; }
   }
   return n;
+}
+
+/* firma de las paredes cortafuego elegidas: si cambia, se vuelven a buscar los sellos que quedaron sin pared */
+function fireSig() {
+  const ks = [...new Set(['A', ...S.floors.map(akOf)])];
+  return JSON.stringify([S.plans.A.fileId || '', ks.map(k => [k, fireRulesOf(k).map(r => r.id + ':' + (r.key || r.name))])]);
+}
+/* hay sellos de pared por completar en este estado (sin mirar el plano) */
+export function wallsPending(st = S) {
+  return st.marks.some(m => m.type === 'seal' && locOf(m) === 'pared' && !m.wall);
+}
+
+/* Completa solo, al abrir el plano, el tipo de pared de los sellos de pared que no lo tienen: el de la pared
+   cortafuego del plano A debajo del sello, o NO_WALL (panel de yeso, 2 horas) si no hay ninguna.
+   Si las paredes elegidas en Detección cambiaron, vuelve a buscar los que habían quedado como NO_WALL.
+   No toca los sellos con tipo de pared elegido o detectado. Devuelve {n, found, none} o null. */
+const running = new WeakMap();
+export function autoWalls(force = false) {
+  const st = S;
+  if (running.has(st)) return running.get(st);
+  const pr = (async () => {
+    const hasA = !!S.plans.A.fileId, sig = fireSig();
+    const redo = force || S.wallSig !== sig;
+    const list = S.marks.filter(m => m.type === 'seal' && locOf(m) === 'pared' && (!m.wall || (redo && m.wallNone)));
+    if (!list.length) { if (S.wallSig !== sig) S.wallSig = sig; return null; }
+    const anyRules = hasA && [...new Set(['A', ...S.floors.map(akOf)])].some(k => fireRulesOf(k).length);
+    // plano A todavía cargando o con error: se intenta la próxima vez que se abra el plano
+    if (anyRules && (!RT.A || !RT.A.bmp)) return null;
+    const prev = new Map(list.map(m => [m, [m.wall, m.wallNone]]));
+    list.forEach(m => { m.wall = ''; delete m.wallNone; });
+    let found = 0, none = 0;
+    for (const m of list) {
+      if (S !== st) { prev.forEach(([w, wn], x) => { if (!x.wall) { x.wall = w || ''; if (wn) x.wallNone = true; } }); return null; }
+      let w = '';
+      if (anyRules) { try { w = await wallOf(m); } catch (e) { w = ''; } }
+      if (S !== st) { m.wall = prev.get(m)[0] || ''; if (prev.get(m)[1]) m.wallNone = true; continue; }
+      if (w) { m.wall = w; found++; } else { m.wall = NO_WALL; m.wallNone = true; none++; }
+    }
+    S.wallSig = sig;
+    return {n: list.length, found, none};
+  })();
+  running.set(st, pr);
+  pr.finally(() => running.delete(st));
+  return pr;
 }

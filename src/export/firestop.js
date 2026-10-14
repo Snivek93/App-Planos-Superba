@@ -7,7 +7,9 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { joinY, locOf, sealLevels } from '../core/levels.js';
-import { curSheet, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
+import { curSheet, scopeSheets, secLabel, sheetsOf, showHome, withState } from '../project/model.js';
+import { autoWalls, NO_WALL, wallsPending } from '../detect/wall.js';
+import { openSheet } from '../project/sheets.js';
 
 /* ---------- Excel para Firestop Suite (formato hoja CALCULADORA) ---------- */
 export const FS_OPTS_L = ["Tubería Metal","Tubería Metal Aislado","Tubería Cobre Aislado HVAC","Tubería EMT","Tubería Combustible (PVC, CPVC, PEX, PP-R)","Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)","Bandeja de Cables","Cable Armado","Cables en Paso Repenetrable","Cables Sueltos","Caja Electromecánica UL","Ducto Rectangular","Ducto Rectangular Aislado","Ducto Redondo","Ducto Redondo Aislado","Pasante Múltiple","Vacío","Viga W","Viga Canal","Viga Tubo Rectangular"];
@@ -76,7 +78,22 @@ export function fsSyncGeom(tr) {
   tr.querySelectorAll('.gi').forEach(el => el.hidden = !show[el.dataset.g]);
 }
 
+/* Antes de exportar: los planos con sellos de pared sin tipo de pared se abren uno por uno para tomar el tipo
+   de pared del plano A (o panel de yeso, 2 horas, si no hay pared cortafuego debajo). Al final vuelve a donde estaba. */
+async function sweepWalls() {
+  const pend = scopeSheets('all').filter(sh => wallsPending(sh.state) && !sh.initB && !sh.state.floors.some(f => f.pending));
+  if (!pend.length) return;
+  const from = P.active;
+  for (let i = 0; i < pend.length; i++) {
+    toast(`Completando el tipo de pared de los sellos: plano ${i + 1} de ${pend.length} (${pend[i].name})…`);
+    try { await openSheet(pend[i].id, {noB:true}); await autoWalls(); } catch (e) { /* ese plano queda con el valor por defecto */ }
+  }
+  if (from && P.sheets[from]) await openSheet(from); else showHome();
+  save();
+}
+
 export async function fsDialog() {
+  await sweepWalls();
   // cada plano tiene su propio juego de categorías: el nombre de cada una se toma con el estado de su plano
   // (si no, las categorías de otras secciones salían como "Por definir" en esta lista)
   const seals = [], tinfo = {};
@@ -89,9 +106,9 @@ export async function fsDialog() {
   if (!seals.length) return toast('Todavía no hay sellos para exportar.');
   const tOf = id => tinfo[id] || {t: ST[id], set: '', i: 0};
   const cfg = S.fsx || (S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}});
-  const wallNames = [...new Set(seals.filter(m => locOf(m) === 'pared').map(m => m.wall || '(sin tipo de pared)'))];
+  const wallNames = [...new Set(seals.filter(m => locOf(m) === 'pared').map(m => m.wall || NO_WALL))];
   const wallRows = wallNames.map(w => {
-    const c = cfg.walls[w] || {N: /concreto|estructural|muro/i.test(w) ? 'Concreto' : 'Panel de Yeso', O: /\b1\s*h|1\s*hora/i.test(w) ? '1 Hora' : '2 Horas'};
+    const c = cfg.walls[w] || (w === NO_WALL ? {N:'Panel de Yeso', O:'2 Horas'} : {N: /concreto|estructural|muro/i.test(w) ? 'Concreto' : 'Panel de Yeso', O: /\b1\s*h|1\s*hora/i.test(w) ? '1 Hora' : '2 Horas'});
     return `<tr data-wall="${esc(w)}"><td>${esc(w)}</td><td>${fsSel('N', FS_OPTS_N, c.N)}</td><td>${fsSel('O', FS_OPTS_O, c.O)}</td></tr>`;
   }).join('');
   // una fila por categoría y ubicación (pared / losa)
@@ -156,7 +173,7 @@ export function fsRows(cfg, sh) {
   const map = new Map();
   for (const m of allSeals()) {
     const {lv: levels, f, below} = sealLevels(m);
-    const loc = locOf(m), wall = loc === 'pared' ? (m.wall || '(sin tipo de pared)') : '';
+    const loc = locOf(m), wall = loc === 'pared' ? (m.wall || NO_WALL) : '';
     for (const lv of levels) {
       const mem = !!m.mem, td = trayDims(m.diam), key = [lv, loc, m.st, wall, mem, td ? trayLabel(td) : ''].join('\u0001');
       const r = map.get(key) || {lv, loc, st:m.st, wall, mem, td, n:0, planta: f ? f.name : '', auto:0, man:0, below};

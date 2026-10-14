@@ -18,6 +18,7 @@ import { altOnly, clearExtras, extraKeys, setupExtras } from '../plans/extraA.js
 import { hasAlt, prepareAlt, syncAltFloors } from '../plans/altA.js';
 import { syncSealDiams } from '../panels/sellos.js';
 import { alignPending } from '../plans/floors.js';
+import { autoWalls } from '../detect/wall.js';
 
 /* --- abrir hojas --- */
 export async function openSheet(id, opt = {}) {
@@ -37,11 +38,14 @@ export async function openSheet(id, opt = {}) {
   const initB = opt.initB || sh.initB, loads = [];
   if (S.plans.A.fileId) loads.push(loadPlanFile('A', S.plans.A.fileId, S.plans.A.page));
   for (const k of extraKeys) if (S.plans[k].fileId && !altOnly.has(k)) loads.push(loadPlanFile(k, S.plans[k].fileId, S.plans[k].page));
-  if (sh.kind === 'pair' && S.plans.B.fileId) {
+  // opt.noB: solo para leer el plano A (completar el tipo de pared de varios planos seguidos sin cargar cada plano B)
+  if (sh.kind === 'pair' && S.plans.B.fileId && !opt.noB) {
     if (initB) { await Promise.all(loads); loads.length = 0; if (P.active !== id) return; }
     loads.push(loadPlanFile('B', S.plans.B.fileId, S.plans.B.page, {initB}));
   }
   await Promise.all(loads);
+  // solo lectura del plano A: no se ajusta nada que dependa del plano B (escala, plantas, diámetros)
+  if (opt.noB) { if (P.active === id) { renderAll(); trimInactive(); } return; }
   if (sh.initB) { delete sh.initB; save(); }
   if (P.active !== id) return;
   if (syncLevelFloors(sh) && S.floors.some(f => f.src)) toast('Se crearon las plantas de los niveles elegidos. Revise en Planos que cada una calce con el plano B.');
@@ -49,6 +53,17 @@ export async function openSheet(id, opt = {}) {
   if (sh.kind === 'pair') syncSealDiams();
   if (S.floors.some(f => f.pending)) { await alignPending(); if (P.active === id) { renderAll(); fit(); save(); } }
   if (P.active === id && hasAlt(sh)) { syncAltFloors(sh); if (S.aView === 'losa') { await prepareAlt(); if (P.active === id) { renderAll(); save(); } } }
+  if (P.active === id) wallsOnOpen(id);
+}
+
+/* sellos de pared sin tipo de pared: se toma el del plano A debajo, o panel de yeso 2 h si no hay pared marcada */
+export function wallsOnOpen(id) {
+  return autoWalls().then(r => {
+    if (!r || P.active !== id) return r;
+    save(); renderAll();
+    if (r.n) toast(`Tipo de pared completado en ${r.n} ${r.n === 1 ? 'sello' : 'sellos'} de pared: ${r.found} del plano A${r.none ? `, ${r.none} sin pared cortafuego debajo (se toman como panel de yeso, 2 horas)` : ''}.`);
+    return r;
+  }).catch(() => null);
 }
 
 export function closeSheet() {

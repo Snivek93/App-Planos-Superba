@@ -22,7 +22,7 @@ import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
 import { catKey, curSheet, secById, subById, withState } from '../project/model.js';
 import { addManual, manualDel, manualEdit, manualHtml, manualMarks, pasteManual } from './manual.js';
-import { fillWalls } from '../detect/wall.js';
+import { autoWalls, NO_WALL } from '../detect/wall.js';
 /* nombre del juego de planos (subsección o sección) */
 function setName(sh) { if (!sh) return ''; if (sh.kind === 'arq') return 'los arquitectónicos'; const s = secById(sh.sec), u = sh.sub ? subById(sh.sec, sh.sub) : null; return (s ? s.name : '') + (u ? ' › ' + u.name : ''); }
 
@@ -145,7 +145,9 @@ export function renderSeals() {
   const pendD = S.marks.filter(m => m.type === 'seal' && m.st === 'pend' && m.diam).length;
   if (pendD) h += `<p class="help" style="margin:8px 0 0">${pendD} ${pendD === 1 ? 'sello está' : 'sellos están'} en "Por definir" aunque ${pendD === 1 ? 'tiene' : 'tienen'} diámetro (por ejemplo porque se borró su categoría). <button class="linkbtn" data-act="pendDiam">Asignar categoría por diámetro</button></p>`;
   const sinW = S.marks.filter(m => m.type === 'seal' && locOf(m) === 'pared' && !m.wall).length;
-  if (sinW) h += `<p class="help" style="margin:8px 0 0">${sinW} ${sinW === 1 ? 'sello de pared no tiene' : 'sellos de pared no tienen'} tipo de pared (el Excel de Firestop no sabe si es concreto o panel de yeso). <button class="linkbtn" data-act="fillWall">Tomar el tipo de pared del plano A</button> (no cambia los que ya tienen). También se puede elegir a mano: seleccione los sellos y use "Tipo de pared" en la barra de arriba.</p>`;
+  const noW = S.marks.filter(m => m.type === 'seal' && locOf(m) === 'pared' && m.wallNone).length;
+  if (sinW) h += `<p class="help" style="margin:8px 0 0">${sinW} ${sinW === 1 ? 'sello de pared no tiene' : 'sellos de pared no tienen'} tipo de pared todavía. <button class="linkbtn" data-act="fillWall">Tomar el tipo de pared del plano A</button> (los que no estén sobre una pared cortafuego quedan como panel de yeso, 2 horas).</p>`;
+  else if (noW) h += `<p class="help" style="margin:8px 0 0">${noW} ${noW === 1 ? 'sello de pared no está' : 'sellos de pared no están'} sobre una pared cortafuego marcada en el plano A y ${noW === 1 ? 'se toma' : 'se toman'} como panel de yeso, 2 horas ("${esc(NO_WALL)}"). <button class="linkbtn" data-act="fillWall">Buscar de nuevo en el plano A</button> · También se puede elegir a mano: seleccione los sellos y use "Tipo de pared" en la barra de arriba.</p>`;
   const sinD = S.marks.filter(m => m.type === 'seal' && !m.diam).length;
   if (sinD && RT.B && RT.B.isPdf) h += `<p class="help" style="margin:8px 0 0">${sinD} ${sinD === 1 ? 'sello no tiene' : 'sellos no tienen'} diámetro. <button class="linkbtn" data-act="fillDiam">Buscar diámetro en el plano B</button> (no cambia los que ya tienen).</p>`;
   h += `<div class="btnrow"><button class="btn red" data-act="detect">Detectar cruces</button><button class="btn" data-act="renum">Renumerar</button><button class="btn" data-act="csv">Exportar CSV</button><button class="btn primary" data-act="fss">Excel para Firestop Suite</button></div>
@@ -329,10 +331,12 @@ export function init() {
     }
     if (a === 'fillDiam') { fillMissingDiams(); return; }
     if (a === 'fillWall') {
-      const list = S.marks.filter(m => m.type === 'seal' && locOf(m) === 'pared' && !m.wall), S0 = S;
+      const S0 = S;
       toast('Buscando el tipo de pared de cada sello…');
       pushUndo();
-      fillWalls(list).then(n => { if (S !== S0) return; changed(); toast(n ? `${n} ${n === 1 ? 'sello' : 'sellos'} con tipo de pared.${n < list.length ? ` ${list.length - n} no están sobre una pared cortafuego marcada; asígneles el tipo a mano.` : ''}` : 'Ningún sello está sobre una pared cortafuego marcada en el plano A. Revise en Detección qué paredes están elegidas, o asigne el tipo a mano.'); });
+      autoWalls(true).then(r => { if (S !== S0) return; changed();
+        if (!r) return toast('El plano A todavía se está cargando. Pruebe de nuevo en un momento.');
+        toast(`${r.found} de ${r.n} ${r.n === 1 ? 'sello' : 'sellos'} con tipo de pared del plano A.${r.none ? ` ${r.none} sin pared cortafuego debajo: quedan como panel de yeso, 2 horas.` : ''}`); });
       return;
     }
     if (a === 'detect') detectCrossings();

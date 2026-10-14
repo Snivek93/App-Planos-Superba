@@ -2,7 +2,7 @@
 import { P, RT, S } from '../core/state.js';
 import { isMobile, LITE } from '../core/constants.js';
 import { dirty } from '../canvas/render.js';
-import { loadFile, makeTint } from '../plans/load.js';
+import { closeOrphanPdfs, destroyPdf, loadFile, makeTint } from '../plans/load.js';
 import { renderPlans } from '../panels/planos.js';
 import { DB } from '../core/storage.js';
 import { guessType, pid, RT_BLANK } from './model.js';
@@ -49,14 +49,35 @@ export function rtRemember(rt, fileId, page) {
     if (active.has(v)) continue;
     rtCache.delete(k);
     if (v.bmp && v.bmp.close) v.bmp.close();
+    freeCanvas(v.bmp); freeCanvas(v.tinted); freeCanvas(v.hl && v.hl.c);
+    const pdf = v.pdf;
     v.bmp = v.tinted = v.hl = v.vec = v.pdf = v.text = null;
+    releasePdf(pdf);
   }
+}
+/* suelta la memoria de un lienzo ya sin uso de inmediato (si no, el navegador la libera tarde y al abrir
+   muchos planos seguidos la pestaña se puede quedar sin memoria) */
+function freeCanvas(c) { if (c && c.getContext && c.width) { c.width = 0; c.height = 0; } }
+/* cierra el documento PDF en el lector (worker) si ningún plano en memoria lo sigue usando */
+function releasePdf(pdf) {
+  if (!pdf || !pdf.destroy) return;
+  const inUse = [...rtCache.values(), ...Object.values(RT)].some(r => r && r.pdf === pdf);
+  if (!inUse) destroyPdf(pdf);
 }
 /* Planos guardados en memoria pero que no están abiertos: se sueltan las capas pesadas (resaltado,
    lectura vectorial, documento PDF). Se recalculan rápido desde la caché del navegador si se vuelven a abrir. */
 export function trimInactive() {
   const active = new Set(Object.values(RT));
-  for (const v of rtCache.values()) if (!active.has(v)) { v.hl = null; v.tinted = null; v.tintKey = undefined; if (LITE) { v.vec = null; v.pdf = null; v.text = null; v.labels = null; } }
+  for (const v of rtCache.values()) if (!active.has(v)) {
+    if (v.tinted && v.tinted !== v.bmp) freeCanvas(v.tinted);
+    freeCanvas(v.hl && v.hl.c);
+    v.hl = null; v.tinted = null; v.tintKey = undefined;
+    // el documento PDF abierto en el lector ocupa mucha memoria y no se suelta solo: se cierra y se vuelve a abrir
+    // desde el archivo guardado si hace falta (detección, alinear, exportar)
+    const pdf = v.pdf; v.pdf = null; releasePdf(pdf);
+    if (LITE) { v.vec = null; v.text = null; v.labels = null; }
+  }
+  closeOrphanPdfs(new Set([...rtCache.values(), ...Object.values(RT)].map(r => r && r.pdf).filter(Boolean)));
 }
 
 export async function loadPlanFile(k, fileId, page, opt = {}) {

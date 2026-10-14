@@ -74,10 +74,26 @@ export function makeThumb(src, fileId, page) {
   const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height);
   return new Promise(res => c.toBlob(b => { if (b) DB.put(thumbKey(fileId, page), {blob:b}).then(() => { thumbReady(fileId, page); res(true); }); else res(false); }, 'image/jpeg', 0.82));
 }
-export async function openPdf(blob) {
+/* Documentos PDF abiertos en el lector. El lector (worker) guarda cada documento hasta que se cierra con destroy():
+   no se libera solo aunque ya nadie lo use, y al pasar por muchos planos la pestaña se quedaba sin memoria. */
+const openDocs = new Map();
+export async function openPdf(blob, own = false) {
   await pdfReady().catch(() => null);
   if (!pdfjsLib) throw new Error('No se pudo cargar el lector de PDF. Recargue la página.');
-  return pdfjsLib.getDocument({data: new Uint8Array(await blob.arrayBuffer())}).promise;
+  const task = pdfjsLib.getDocument({data: new Uint8Array(await blob.arrayBuffer())});
+  const doc = await task.promise;
+  openDocs.set(doc, {t: Date.now(), own});
+  return doc;
+}
+export function destroyPdf(doc) {
+  if (!doc) return;
+  openDocs.delete(doc);
+  try { doc.destroy && doc.destroy(); } catch (e) {}
+}
+/* cierra los PDF que ya no usa ningún plano en memoria (los recién abiertos se dejan un rato, por si se están cargando) */
+export function closeOrphanPdfs(inUse) {
+  const now = Date.now();
+  for (const [doc, i] of [...openDocs]) if (!i.own && !inUse.has(doc) && now - i.t > 2000) destroyPdf(doc);
 }
 /* El PDF se abre solo cuando hace falta (detección, alineación por ejes, exportar),
    porque el plano en pantalla puede venir de la imagen guardada. */
@@ -111,7 +127,7 @@ export async function prepareFile(fileId, page, opt = {}) {
     if (cached && cached.blob) { const bm = await createImageBitmap(cached.blob); await makeThumb(bm, fileId, page); bm.close(); }
     return true;
   }
-  const pdf = await openPdf(rec.blob);
+  const pdf = await openPdf(rec.blob, true);
   try {
     const pg = Math.min(Math.max(1, page), pdf.numPages);
     if (needRender || needThumb) {
@@ -122,7 +138,7 @@ export async function prepareFile(fileId, page, opt = {}) {
     }
     if (needVec) await prepareVec(fileId, pg, pdf);
     return true;
-  } finally { pdf.destroy && pdf.destroy(); }
+  } finally { destroyPdf(pdf); }
 }
 
 export async function loadFile(k, blob, name, opt = {}) {

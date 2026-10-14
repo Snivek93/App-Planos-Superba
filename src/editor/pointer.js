@@ -184,8 +184,9 @@ export function tapAction(p, e) {
     const hit = hitTest(p, true);
     if (hit) { setTool('select'); sel.add(hit.id); renderOpts(); highlightSealRow(); dirty(); return; }
     const m = placeSeal(w); autoDiam(m, w);
-    // sello de pared puesto a mano: toma el tipo de pared del plano A en ese punto (para el material en Firestop)
-    if (m.loc !== 'losa') fillWalls([m]).then(n => { if (n && S.marks.includes(m)) { save(); renderSeals(); renderOpts(); } }).catch(() => {});
+    // sello de pared puesto a mano: toma el tipo de pared del plano A en ese punto (para el material en Firestop);
+    // sin pared cortafuego debajo queda como panel de yeso de 2 horas
+    if (m.loc !== 'losa') fillWalls([m], true).then(() => { if (S.marks.includes(m)) { save(); renderSeals(); renderOpts(); } }).catch(() => {});
     return;
   }
   if (tool === 'text') {

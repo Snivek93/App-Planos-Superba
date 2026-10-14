@@ -204,8 +204,8 @@ export function init() {
     else if (s.dataset.o === 'selWall' && s.value !== '__') {
       const ms = [...sel].map(MK).filter(m => m && m.type === 'seal');
       pushUndo();
-      if (s.value === '__auto') { ms.forEach(m => { m.wall = ''; }); fillWalls(ms).then(n => { changed(); renderOpts(); toast(n ? `${n} de ${ms.length} con tipo de pared del plano A.` : 'No hay pared cortafuego marcada debajo de esos sellos.'); }); }
-      else { ms.forEach(m => { m.wall = s.value; }); changed(); }
+      if (s.value === '__auto') { ms.forEach(m => { m.wall = ''; delete m.wallNone; }); fillWalls(ms, true).then(n => { changed(); renderOpts(); toast(n ? `${n} de ${ms.length} con tipo de pared del plano A.${n < ms.length ? ' Los demás quedan como panel de yeso, 2 horas.' : ''}` : 'No hay pared cortafuego marcada debajo de esos sellos: quedan como panel de yeso, 2 horas.'); }); }
+      else { ms.forEach(m => { m.wall = s.value; delete m.wallNone; }); changed(); }
     }
     else if (s.dataset.o === 'selLoc' && s.value) { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') m.loc = s.value; } changed(); }
     else if (s.dataset.o === 'textSize' && s.value) { S.textPt = +s.value; save(); renderOpts(); }
