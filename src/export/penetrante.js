@@ -2,7 +2,7 @@
 import { ST, trayDims } from '../core/constants.js';
 import { S } from '../core/state.js';
 import { ask, changed } from '../ui/app.js';
-import { diamToIn, FS_AISL, FS_OPTS_L, FS_OPTS_P, fsGeomCell, fsGeomKind, fsNeedsJ, fsSel, fsSyncGeom, guessL, guessP } from './firestop.js';
+import { catDiam, diamToIn, FS_AISL, markDman, FS_OPTS_L, FS_OPTS_P, fsGeomCell, fsGeomKind, fsNeedsJ, fsSel, fsSyncGeom, guessL, guessP } from './firestop.js';
 
 /* ---------- datos de penetrante por categoría (usados por la tabla del plano y por el Excel) ---------- */
 export function catProps(id) { return (S.fsx && S.fsx.cats && S.fsx.cats[id]) || null; }
@@ -26,7 +26,8 @@ export function geomLabel(t, c, sample) {
   if (!c) return sample && sample.diam ? sample.diam : '';
   const k = fsGeomKind(c.L || ''), cm = v => String(Math.round(+v*10)/10).replace('.', ',');
   let s = '';
-  if ((k === 'round' || k === 'vacio') && c.D !== '' && c.D != null) s = `Ø ${fracIn(c.D)}`;
+  const D = k === 'round' && t ? catDiam(c, t.name) : c.D;
+  if ((k === 'round' || k === 'vacio') && D !== '' && D != null) s = `Ø ${fracIn(D)}`;
   else if (k === 'caja' && c.F && c.G) s = `${cm(c.F)}×${cm(c.G)}${c.H ? '×' + cm(c.H) : ''} cm`;
   else if ((k === 'rect' || k === 'vacio') && c.F && c.G) s = `${cm(c.F)}×${cm(c.G)} cm`;
   if (s && FS_AISL.test(c.L || '') && +c.E) s += ` + aisl. ${fracIn(c.E)}`;
@@ -50,6 +51,7 @@ export async function catPropsDialog(id) {
   const td = trayDims(ms.find(m => trayDims(m.diam))?.diam || t.name);
   if (td && (cur.F == null || cur.F === '') && (cur.G == null || cur.G === '')) { cur.F = td.a/10; cur.G = td.b/10; }
   if (cur.D == null) cur.D = td ? '' : diamToIn(ms.find(m => m.diam)?.diam || t.name);
+  if (!td && cur.D !== '') cur.D = catDiam(cur, t.name);
   const L = cur.L || guessL(t.name + ' ' + sysTxt), P = cur.P || guessP(L, cur.D);
   const html = `<p class="muted small" style="margin:0">Estos datos salen en la tabla del plano y se usan al exportar a Firestop Suite.</p>
     <div class="cprops" id="cpRow">
@@ -72,6 +74,6 @@ export async function catPropsDialog(id) {
     }});
   if (!v) return;
   if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
-  S.fsx.cats[id] = {...(S.fsx.cats[id] || {}), ...v};
+  S.fsx.cats[id] = markDman({...(S.fsx.cats[id] || {}), ...v}, t.name);
   changed();
 }

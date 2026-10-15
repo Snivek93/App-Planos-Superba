@@ -38,6 +38,25 @@ export function diamToIn(txt) {
   return '';
 }
 
+/* Diámetro nominal en pulgadas de una categoría "ø19 mm" (tabla MM_TO_IN), o '' si no es una categoría por diámetro.
+   El valor guardado de la categoría se corrige a este salvo que se haya escrito a mano otro distinto (c.Dman):
+   así un 1.25" que quedó de antes en la categoría ø19 mm sale como 0.75". */
+export function nominalIn(name) {
+  const m = String(name || '').match(/^\s*[øØ⌀]\s*(\d+(?:[.,]\d+)?)\s*mm\s*$/i);
+  return m ? diamToIn(m[1] + ' mm') : '';
+}
+export function catDiam(c, name) {
+  const nom = nominalIn(name);
+  if (nom === '' || (c && c.Dman && c.D !== '' && c.D != null)) return c ? c.D : '';
+  return nom;
+}
+/* al guardar: Dman si el diámetro escrito no es el nominal de la categoría */
+export function markDman(c, name) {
+  const nom = nominalIn(name);
+  if (nom !== '' && c.D !== '' && c.D != null && Math.abs(+c.D - nom) > 1e-6) c.Dman = true; else delete c.Dman;
+  return c;
+}
+
 export function guessL(txt) {
   if (/cobre|hvac|refrig/i.test(txt)) return "Tubería Cobre Aislado HVAC";
   if (/emt|conduit|el[eé]ctr/i.test(txt)) return "Tubería EMT";
@@ -114,6 +133,7 @@ export async function fsDialog() {
     const td = trayDims(g.list.find(m => trayDims(m.diam))?.diam || t.name);
     if (td && (c.F == null || c.F === '') && (c.G == null || c.G === '')) { c.F = td.a/10; c.G = td.b/10; }
     if (c.D == null) c.D = td ? '' : diamToIn(dTxt);
+    if (!td && c.D !== '') c.D = catDiam(c, t.name);
     if (td && (c.J == null || c.J === '')) c.J = 40;   // canasta sin % de ocupación: 40 % de base
     const L = c.L || guessL(t.name + ' ' + sysTxt), P = c.P || guessP(L, c.D);
     return `<tr data-g="${gi}"><td><span class="ldot" style="--c:${t.color}"></span> <b>${esc(t.name)}</b> <span class="muted">(${g.list.length})</span>${ti.set || sysTxt ? `<div class="small muted">${esc([ti.set, sysTxt].filter(Boolean).join(' · '))}</div>` : ''}</td>
@@ -147,7 +167,7 @@ export async function fsDialog() {
         if (k === 'round') { c.F = ''; c.G = ''; c.H = ''; }
         if (k === 'rect') { c.D = ''; c.H = ''; }
         if (k === 'caja') c.D = '';
-        out.cats[g.st] = {...(out.cats[g.st] || {}), ...c};
+        out.cats[g.st] = markDman({...(out.cats[g.st] || {}), ...c}, tOf(g.st).t.name);
         if (q('M').value !== g.loc) out.moves.push([g, q('M').value]);
       });
       return out;
@@ -174,7 +194,7 @@ export function fsRows(cfg, sh) {
     const t = ST[r.st], c = cfg.cats[r.st] || {}, w = r.loc === 'losa' ? cfg.losa : (cfg.walls[r.wall] || {N:'Panel de Yeso', O:'2 Horas'});
     // canasta o bandeja: la dimensión A×B viene del sello (en mm) y se exporta en cm como Bandeja de Cables
     const tray = r.td ? {F: r.td.a/10, G: r.td.b/10} : null;
-    const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray ? '' : (c.D ?? '');
+    const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray || fsGeomKind(L) !== 'round' ? (tray ? '' : (c.D ?? '')) : (catDiam(c, t.name) ?? '');
     // Zona: la aplicación y su subaplicación (Mecánico Agua potable, Eléctrico Acometida…). Penetrante, nivel,
     // barrera y material ya van en sus columnas. La penetración de membrana se marca porque cambia el sellado.
     const zona = ((sh ? zonaOf(sh) : '') || t.name) + (r.mem ? ' (membrana)' : '');
