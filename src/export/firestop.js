@@ -22,7 +22,7 @@ export const FS_OPTS_P = ["Pasta FS ONE MAX","Cinta con Collar Metálico CP 648-
 
 export const FS_K = {"Tubería Metal":"Tubería","Tubería Metal Aislado":"Tubería Aislada","Tubería Cobre Aislado HVAC":"Tubería Aislada","Tubería EMT":"Tubería","Tubería Combustible (PVC, CPVC, PEX, PP-R)":"Tubería","Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)":"Tubería Aislada","Bandeja de Cables":"Bandeja","Cable Armado":"Cable","Cables en Paso Repenetrable":"Cable","Cables Sueltos":"Cable","Caja Electromecánica UL":"Caja Electromecánica UL","Ducto Rectangular":"Ducto Rectangular","Ducto Rectangular Aislado":"Ducto Rectangular","Ducto Redondo":"Ducto Redondo","Ducto Redondo Aislado":"Ducto Redondo","Pasante Múltiple":"Múltiple","Vacío":"Vacío","Viga W":"Viga","Viga Canal":"Viga","Viga Tubo Rectangular":"Viga"};
 
-export const MM_TO_IN = {13:0.5, 16:0.5, 19:0.75, 20:0.75, 25:1, 32:1.25, 38:1.5, 40:1.5, 50:2, 60:2, 63:2.5, 64:2.5, 65:2.5, 75:3, 80:3, 90:3, 100:4, 110:4, 125:5, 150:6, 160:6, 200:8, 250:10, 300:12};
+export const MM_TO_IN = {13:0.5, 16:0.5, 19:0.75, 20:0.75, 25:1, 32:1.25, 38:1.5, 40:1.5, 50:2, 60:2, 63:2.5, 64:2.5, 75:3, 100:4, 110:4, 125:5, 150:6, 160:6, 200:8, 250:10, 300:12};
 
 export function diamToIn(txt) {
   if (!txt) return '';
