@@ -12,7 +12,7 @@ import { setTab } from '../ui/app.js';
 import { LOC_NAME, locOf, sealLevels } from '../core/levels.js';
 import { anLabel, catProps, geomLabel, penShort } from '../export/penetrante.js';
 import { frameOf } from '../plans/floors.js';
-import { orderedSheets, secLabel, withState } from '../project/model.js';
+import { locFor, orderedSheets, secLabel, withState } from '../project/model.js';
 import { openSheet } from '../project/sheets.js';
 
 /* --- tabla de penetrantes de todo el proyecto --- */
@@ -38,7 +38,8 @@ export function penSeals() {
 
 export function penFiltered(all) {
   const q = penF.q.trim().toLowerCase();
-  return all.filter(r => (!penF.sec || r.sh.sec === penF.sec) && (!penF.loc || r.loc === penF.loc) && (!penF.lv || r.lv.includes(penF.lv)) &&
+  // además de los filtros de esta pestaña, lo elegido en el inicio para cada grupo (pared, losa o ambos)
+  return all.filter(r => (!penF.sec || r.sh.sec === penF.sec) && (!penF.loc || r.loc === penF.loc) && (!locFor(r.sh) || r.loc === locFor(r.sh)) && (!penF.lv || r.lv.includes(penF.lv)) &&
     (!q || [r.cat, r.pen, r.geom, r.wall, r.diam, r.note, r.sh.name, secLabel(r.sh)].join(' ').toLowerCase().includes(q)));
 }
 

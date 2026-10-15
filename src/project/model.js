@@ -223,6 +223,15 @@ export function secById(id) { return P.sections.find(s => s.id === id); }
 
 export function subById(sec, id) { return (secById(sec)?.subs || []).find(u => u.id === id); }
 
+/* Qué sellos se cuentan (inicio y Excel): '' pared y losa, 'pared' o 'losa'. P.locView es lo general;
+   P.locBy guarda lo elegido por grupo, con clave "sección|subsección" ("sección|" para los planos sin subsección). */
+export function locView() { return P && (P.locView === 'pared' || P.locView === 'losa') ? P.locView : ''; }
+export function locKey(sec, sub) { return (sec || '') + '|' + (sub || ''); }
+export function locForKey(k) { const by = (P && P.locBy) || {}; return Object.prototype.hasOwnProperty.call(by, k) ? by[k] : locView(); }
+export function locFor(sh) { return locForKey(locKey(sh.sec, sh.sub)); }
+export function locMixed() { const by = (P && P.locBy) || {}, g = locView(); return Object.values(by).some(v => v !== g); }
+export const locTxt = v => v === 'pared' ? 'Solo pared' : v === 'losa' ? 'Solo losa' : 'Pared y losa';
+
 export function secLabel(sh) { const s = secById(sh.sec), u = sh.sub ? subById(sh.sec, sh.sub) : null; return (s ? s.name : '') + (u ? ' › ' + u.name : ''); }
 
 export function sheetsOf(sec, sub) {

@@ -5,7 +5,7 @@ import { renderPlans } from '../panels/planos.js';
 import { renderSeals } from '../panels/sellos.js';
 import { save } from '../core/storage.js';
 import { renderTop, toast } from '../ui/app.js';
-import { adoptCats, catKey, isPlanFile, secById, secLabel, sheetsOf, subById } from '../project/model.js';
+import { adoptCats, catKey, isPlanFile, locKey, locView, secById, secLabel, sheetsOf, subById } from '../project/model.js';
 import { addArqFiles, addPairFiles } from '../project/sheets.js';
 import { renderProject, tpj } from './home.js';
 import { penF, renderPenTable } from './penetrantes.js';
@@ -105,6 +105,13 @@ export function init() {
     if (a === 'pname') { P.name = t.value.trim() || 'Proyecto'; save(); renderTop(); }
     else if (a === 'secName' && sec && sec.kind !== 'arq') { sec.name = t.value.trim() || sec.name; save(); renderTop(); }
     else if (a === 'subName') { const u = subById(sec.id, t.closest('[data-sub]').dataset.sub); u.name = t.value.trim() || u.name; save(); renderTop(); }
+    else if ((a === 'secLoc' || a === 'subLoc') && sec && t.value !== '__') {
+      const by = P.locBy || (P.locBy = {}), set = k => { by[k] = t.value; };
+      if (a === 'subLoc') set(locKey(sec.id, t.closest('[data-sub]').dataset.sub));
+      else { set(locKey(sec.id, null)); sec.subs.forEach(u => set(locKey(sec.id, u.id))); }
+      for (const k of Object.keys(by)) if (by[k] === locView()) delete by[k];   // igual a lo general: no hace falta guardarlo
+      save(); renderProject();
+    }
     else if (a === 'subBelow') {
       const u = subById(sec.id, t.closest('[data-sub]').dataset.sub); u.below = t.checked;
       const items = sheetsOf(sec.id, u.id).filter(s => s.kind === 'pair');

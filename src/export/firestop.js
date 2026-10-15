@@ -7,7 +7,7 @@ import { baseName, saveFile } from './files.js';
 import { save } from '../core/storage.js';
 import { ask, changed, toast } from '../ui/app.js';
 import { joinY, locOf, sealLevels } from '../core/levels.js';
-import { curSheet, homeOn, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
+import { curSheet, homeOn, locFor, locMixed, locTxt, locView, scopeSheets, secLabel, sheetsOf, withState } from '../project/model.js';
 import { NO_WALL } from '../detect/wall.js';
 import { sweepWalls } from '../project/wallsweep.js';
 
@@ -145,7 +145,7 @@ export async function fsDialog() {
   }).join('');
   const cs = curSheet();
   const scopeHtml = `<label class="row"><span>Qué exportar</span><select id="fsScope"><option value="all">Todo el proyecto</option>${cs ? `<option value="cur">Solo este plano: ${esc(cs.name)}</option>` : ''}${P.sections.filter(s => sheetsOf(s.id).length).map(s => `<option value="sec:${s.id}">Solo ${esc(s.name)}</option>`).join('')}</select></label>
-    <label class="row"><span>Barrera</span><select id="fsLoc">${[['', 'Pared y losa (completo)'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<option value="${v}"${(P.locView || '') === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>`;
+    <label class="row"><span>Barrera</span><select id="fsLoc">${[['__home', locMixed() ? 'Como en el inicio (según cada grupo)' : `Como en el inicio (${locTxt(locView()).toLowerCase()})`], ['', 'Pared y losa (completo)'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`;
   const html = scopeHtml + `<p class="muted small" style="margin:0">Excel con el formato de la hoja CALCULADORA (datos desde la fila 23), listo para "Importar Excel" en Firestop Suite. En Zona va la aplicación (Mecánico Agua potable, Eléctrico Acometida…) y se suman en una sola fila los sellos iguales: mismo nivel, zona, geometría, penetrante, barrera, F rating y producto. Los valores quedan guardados para la próxima vez. Las canastas salen como Bandeja de Cables con la dimensión A×B de cada sello (si un sello no la tiene, se usa la de la categoría).</p>
     <div class="fsbox"><b>Penetrantes</b><table class="fst"><tr><th>Categoría</th><th>Tipo de penetrante</th><th>Geometría</th><th>Espacio anular (in)</th><th>Barrera</th><th>Material Hilti</th></tr>${rowsHtml}</table></div>
     <div class="fsbox"><b>Paredes</b><table class="fst"><tr><th>Tipo de pared</th><th>Material de barrera</th><th>F Rating</th></tr>${wallRows || '<tr><td colspan="3" class="muted">No hay sellos en pared.</td></tr>'}</table></div>
@@ -292,24 +292,26 @@ export function exportFS(cfg, scope = 'all', loc = '') {
     "Tipo de penetrante", "Tipo de Penetrante", "Tipo de Barrera", "Material de Barrera", "F Rating", "Material Cortafuego Hilti", "NORMATIVA\nSistemas UL 1479", "Nota"];
   const sheets = scopeSheets(scope);
   const raw = [];
-  for (const sh of sheets) raw.push(...withState(sh.state, () => fsRows(cfg, sh)));
+  // "Como en el inicio": cada plano con lo elegido para su grupo (pared, losa o ambos)
+  for (const sh of sheets) { const lf = loc === '__home' ? locFor(sh) : ''; raw.push(...withState(sh.state, () => fsRows(cfg, sh)).filter(r => !lf || (lf === 'losa') === (r[12] === 'Entrepiso'))); }
+  if (loc === '__home') loc = locMixed() ? 'grupo' : locView();
   // solo pared o solo losa (columna Tipo de Barrera: Pared / Entrepiso)
-  const rows = mergeFsRows(raw).filter(r => !loc || (loc === 'losa') === (r[12] === 'Entrepiso'));
+  const rows = mergeFsRows(raw).filter(r => !loc || loc === 'grupo' || (loc === 'losa') === (r[12] === 'Entrepiso'));
   const lvKey = v => typeof v === 'number' ? v : (parseFloat(v) || 1e9);
   rows.sort((a, b) => lvKey(a[1]) - lvKey(b[1]) || String(a[1]).localeCompare(String(b[1])) || String(a[0]).localeCompare(String(b[0]), 'es', {numeric:true})
     || String(a[12]).localeCompare(String(b[12])) || String(a[11]).localeCompare(String(b[11])) || (+a[3] || 0) - (+b[3] || 0) || (+a[5] || 0) - (+b[5] || 0));
-  if (!rows.length) return toast(`No hay sellos${loc ? ' en ' + loc : ''} en lo que eligió exportar.`);
+  if (!rows.length) return toast(`No hay sellos${loc && loc !== 'grupo' ? ' en ' + loc : ''} en lo que eligió exportar.`);
   const levels = [...new Set(rows.map(r => r[1]).filter(v => v !== '' && v != null))];
   const aoa = [];
   for (let i = 0; i < 21; i++) aoa.push([]);
   aoa[0] = ['Exportado desde Superposición de planos (sellos cortafuego)'];
   aoa[0] = [`${P ? P.name : 'Proyecto'} · exportado desde Superposición de planos (sellos cortafuego)`];
-  aoa[1] = [`Generado: ${new Date().toLocaleDateString('es-CR')}${loc ? ` · Solo ${loc}` : ''} · ${sheets.length} ${sheets.length === 1 ? 'plano' : 'planos'}${levels.length ? ` · Niveles: ${joinY(levels.map(String))}` : ''}`];
+  aoa[1] = [`Generado: ${new Date().toLocaleDateString('es-CR')}${loc === 'grupo' ? ' · Pared o losa según cada grupo' : loc ? ` · Solo ${loc}` : ''} · ${sheets.length} ${sheets.length === 1 ? 'plano' : 'planos'}${levels.length ? ` · Niveles: ${joinY(levels.map(String))}` : ''}`];
   aoa[2] = [`${rows.length} filas · ${rows.reduce((a, r) => a + r[2], 0)} sellos`];
   aoa.push(HEADERS);
   for (const r of rows) aoa.push(r);
   const blob = xlsxBlob('CALCULADORA', aoa, [26, 9, 10, 10, 10, 10, 10, 10, 10, 10, 18, 40, 12, 16, 10, 34, 18, 34], [21]);
-  saveFile(baseName() + '-firestop-suite' + (loc ? '-' + loc : '') + '.xlsx', blob, blob.type);
+  saveFile(baseName() + '-firestop-suite' + (loc === 'grupo' ? '-por-grupo' : loc ? '-' + loc : '') + '.xlsx', blob, blob.type);
   toast(`Excel listo: ${rows.length} filas. En Firestop Suite use "Importar Excel".`);
 }
 

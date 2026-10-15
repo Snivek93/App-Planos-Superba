@@ -9,7 +9,7 @@ import { ask, renderAll, renderTop } from '../ui/app.js';
 import { exportQuant, locOf, sealWeight } from '../core/levels.js';
 import { catPropsDialog } from '../export/penetrante.js';
 import { fsDialog } from '../export/firestop.js';
-import { aLevelsLabel, pid, secById, sheetsOf, subById, withState } from '../project/model.js';
+import { aLevelsLabel, locFor, locForKey, locKey, locMixed, locTxt, locView, pid, secById, sheetsOf, subById, withState } from '../project/model.js';
 import { gcFiles } from '../project/files.js';
 import { commitShared, isSharedLayer } from '../project/shared.js';
 import { addArqPick, closeSheet, newPairDialog, openSheet, sheetDialog } from '../project/sheets.js';
@@ -18,10 +18,9 @@ import { newProject, saveProject } from '../project/archive.js';
 import { fillThumbs, warmUp } from '../project/warm.js';
 
 /* --- inicio del proyecto --- */
-/* qué sellos se cuentan en el inicio: '' pared y losa, 'pared' solo pared, 'losa' solo losa */
-export function locView() { return P && (P.locView === 'pared' || P.locView === 'losa') ? P.locView : ''; }
+/* los totales cuentan pared, losa o ambos según lo elegido para el grupo del plano (locFor) */
 export function sheetTotals(sh) {
-  const lv = locView();
+  const lv = locFor(sh);
   return withState(sh.state, () => {
     const ss = sealsSorted();
     return {seals:ss.length, q:ss.concat(manualMarks()).filter(m => !lv || locOf(m) === lv).reduce((a, m) => a + sealWeight(m), 0), walls:S.marks.filter(m => L(m.layer) && isSharedLayer(L(m.layer))).length + (S.auto.fire || []).filter(r => r.on).length};
@@ -83,6 +82,15 @@ export function startRename(li) {
   inp.focus(); inp.select();
 }
 
+/* selector Pared y losa / Solo pared / Solo losa de una sección (todas sus subsecciones) o de una subsección */
+function locSel(s, u) {
+  let cur;
+  if (u) cur = locForKey(locKey(s.id, u.id));
+  else { const vals = [...new Set([locKey(s.id, null), ...s.subs.map(x => locKey(s.id, x.id))].map(locForKey))]; cur = vals.length === 1 ? vals[0] : null; }
+  const opts = (cur === null ? '<option value="__" selected>Varios</option>' : '') + ['', 'pared', 'losa'].map(v => `<option value="${v}"${cur === v ? ' selected' : ''}>${locTxt(v)}</option>`).join('');
+  return `<select class="locsel" data-pa="${u ? 'subLoc' : 'secLoc'}" title="Qué sellos contar en ${u ? 'esta subsección' : 'esta sección'} (y en el Excel)" aria-label="Sellos a contar">${opts}</select>`;
+}
+
 export function renderProject() {
   if (!P) return;
   const body = $('#homeBody'); if (!body) return;
@@ -102,24 +110,24 @@ export function renderProject() {
     const subs = s.subs.filter(u => perSub[s.id + '|' + u.id]).map(u => `<span class="hchip sub">${esc(u.name)} <b>${perSub[s.id + '|' + u.id]}</b></span>`).join('');
     return `<span class="hchip">${esc(s.name)} <b>${per[s.id]}</b></span>${subs}`; }).join('');
   let h = `<div class="hhead"><div><input class="hname" data-pa="pname" value="${esc(P.name)}" aria-label="Nombre del proyecto">
-      <div class="hsum"><span class="hbig">${total}</span><div><h3>${total === 1 ? 'Sello' : 'Sellos'} para cuantificar${locView() === 'pared' ? ' en pared' : locView() === 'losa' ? ' en losa' : ''}</h3><div class="small muted">${pairs.length} ${pairs.length === 1 ? 'plano de instalaciones' : 'planos de instalaciones'} · ${arqs.length} ${arqs.length === 1 ? 'arquitectónico' : 'arquitectónicos'}</div>${chips ? `<div class="hchips">${chips}</div>` : ''}</div></div></div>
+      <div class="hsum"><span class="hbig">${total}</span><div><h3>${total === 1 ? 'Sello' : 'Sellos'} para cuantificar${locMixed() ? ' (pared o losa según cada grupo)' : locView() === 'pared' ? ' en pared' : locView() === 'losa' ? ' en losa' : ''}</h3><div class="small muted">${pairs.length} ${pairs.length === 1 ? 'plano de instalaciones' : 'planos de instalaciones'} · ${arqs.length} ${arqs.length === 1 ? 'arquitectónico' : 'arquitectónicos'}</div>${chips ? `<div class="hchips">${chips}</div>` : ''}</div></div></div>
     <div class="hacts"><div class="seg hsort" role="group" aria-label="Ordenar planos">${[['az', 'A → Z'], ['za', 'Z → A'], ['fecha', 'Por fecha']].map(([v, t]) => `<button data-pa="sort" data-v="${v}" class="${(P.sort || 'az') === v ? 'on' : ''}" title="Ordenar los planos ${v === 'fecha' ? 'en el orden en que se agregaron' : 'alfabéticamente'}">${t}</button>`).join('')}</div><div class="seg hlay" role="group" aria-label="Vista de los planos">${[['grid', 'Galería', ICON.grid], ['list', 'Lista', ICON.list]].map(([v, t, ic]) => `<button data-pa="layout" data-v="${v}" class="${(P.layout || 'grid') === v ? 'on' : ''}" title="Ver como ${t.toLowerCase()}" aria-label="${t}">${ic}<span class="hide-sm">${t}</span></button>`).join('')}</div><button class="btn" data-pa="newPair">＋ Nuevo plano</button><button class="btn primary" data-pa="fss">Excel para Firestop Suite</button></div></div>`;
   const nSeals = Object.values(T).reduce((a, t) => a + t.seals, 0);
-  h += `<div class="hbar"><div class="seg hview" role="tablist">${[['plans', 'Planos'], ['pen', 'Penetrantes']].map(([v, t]) => `<button data-pa="hview" data-v="${v}" role="tab" class="${homeView === v ? 'on' : ''}">${t}${v === 'pen' ? `<span class="n">${total}</span>` : ''}</button>`).join('')}</div><div class="seg hloc" role="group" aria-label="Qué sellos contar">${[['', 'Pared y losa'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<button data-pa="locView" data-v="${v}" class="${locView() === v ? 'on' : ''}" title="Contar ${v ? 'solo los sellos en ' + v : 'los sellos en pared y en losa'} en los totales">${t}</button>`).join('')}</div></div>`;
+  h += `<div class="hbar"><div class="seg hview" role="tablist">${[['plans', 'Planos'], ['pen', 'Penetrantes']].map(([v, t]) => `<button data-pa="hview" data-v="${v}" role="tab" class="${homeView === v ? 'on' : ''}">${t}${v === 'pen' ? `<span class="n">${total}</span>` : ''}</button>`).join('')}</div><div class="seg hloc" role="group" aria-label="Qué sellos contar">${[['', 'Pared y losa'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<button data-pa="locView" data-v="${v}" class="${!locMixed() && locView() === v ? 'on' : ''}" title="Contar ${v ? 'solo los sellos en ' + v : 'los sellos en pared y en losa'} en todos los grupos">${t}</button>`).join('')}${locMixed() ? '<span class="hlocmix" title="Cada grupo tiene su propia elección (selector junto al total de cada sección o subsección)">Por grupo</span>' : ''}</div></div>`;
   if (homeView === 'pen') { body.innerHTML = h + penHtml(); renderPenTable(); return; }
   const tiles = (list, add) => `<ul class="tiles ${(P.layout || 'grid') === 'grid' ? 'grid' : 'list'}">${list.map(sh => itemHtml(sh, T)).join('')}${add}</ul>`;
   for (const [i, s] of P.sections.entries()) {
     const arq = s.kind === 'arq';
     h += `<section class="hsec" data-sec="${s.id}"><header>
       <input data-pa="secName" value="${esc(s.name)}" size="${Math.max(4, s.name.length + 1)}" aria-label="Nombre de la sección"${arq ? ' readonly' : ''}>
-      ${per[s.id] ? `<span class="pcount" title="Sellos en la sección">${per[s.id]}</span>` : ''}
+      ${per[s.id] ? `<span class="pcount" title="Sellos en la sección">${per[s.id]}</span>` : ''}${arq ? '' : locSel(s)}
       ${arq ? '' : `<button class="icon" data-pa="secUp" title="Subir sección"${i <= 1 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="secDown" title="Bajar sección"${i === P.sections.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="addSub" title="Agregar subsección">＋</button><button class="icon" data-pa="secDel" title="Eliminar sección">${ICON.trash}</button>`}</header>`;
     const root = sheetsOf(s.id, null);
     if (arq) h += tiles(root, addTile('addArq', 'Agregar arquitectónicos'));
     else if (root.length || !s.subs.length) h += tiles(root, addTile('newPair', s.subs.length ? 'Agregar plano sin subsección' : 'Agregar plano'));
     for (const [j, u] of s.subs.entries()) {
       const nU = perSub[s.id + '|' + u.id] || 0;
-      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" size="${Math.max(4, u.name.length + 1)}" aria-label="Nombre de la subsección">${nU ? `<span class="pcount" title="Sellos en la subsección">${nU}</span>` : ''}
+      h += `<div class="hsub" data-sub="${u.id}"><header><input data-pa="subName" value="${esc(u.name)}" size="${Math.max(4, u.name.length + 1)}" aria-label="Nombre de la subsección">${nU ? `<span class="pcount" title="Sellos en la subsección">${nU}</span>` : ''}${locSel(s, u)}
         <label class="subbelow" title="Las tuberías corren bajo la losa: las paredes que cruzan son del nivel inferior"><input type="checkbox" data-pa="subBelow"${u.below ? ' checked' : ''}> <span class="lt">Tuberías</span> bajo losa</label>
         <button class="icon" data-pa="subUp" title="Subir"${j === 0 ? ' disabled' : ''}>↑</button><button class="icon" data-pa="subDown" title="Bajar"${j === s.subs.length - 1 ? ' disabled' : ''}>↓</button><button class="icon" data-pa="subDel" title="Eliminar subsección">${ICON.trash}</button></header>
         ${tiles(sheetsOf(s.id, u.id), addTile('newPair', 'Agregar plano'))}</div>`;
@@ -171,7 +179,7 @@ export function init() {
     else if (a === 'pclear') { penetrantesVars.penF = {...penF, sec:'', lv:'', loc:'', q:''}; renderProject(); }
     else if (a === 'rename') startRename(sheetEl);
     else if (a === 'layout') { P.layout = b.dataset.v; save(); renderProject(); }
-    else if (a === 'locView') { P.locView = b.dataset.v || ''; penetrantesVars.penF.loc = P.locView; save(); renderProject(); }
+    else if (a === 'locView') { P.locView = b.dataset.v || ''; P.locBy = {}; penetrantesVars.penF.loc = ''; save(); renderProject(); }
     else if (a === 'sort') { P.sort = b.dataset.v; save(); renderProject(); renderTop(); }
     else if (a === 'fss') fsDialog();
     else if (a === 'quant') exportQuant('all');
