@@ -24,7 +24,7 @@ export function baseName() {
 }
 
 export function exportCSV() {
-  const seals = sealsSorted(), man = manualMarks();
+  const seals = sealsSorted().filter(m => !m.off), man = manualMarks();
   if (!seals.length && !man.length) return toast('Todavía no hay sellos para exportar.');
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = [['No.', 'Planta', 'Niveles', 'Multiplicador', 'Ubicación', 'Membrana', 'Tipo', 'Diámetro', 'Tubería', 'Pared', 'Origen', 'Nota', 'Capa', 'Plano', 'X', 'Y'].map(q).join(';')];

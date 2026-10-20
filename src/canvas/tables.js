@@ -15,7 +15,7 @@ import { manualMarks } from '../panels/manual.js';
 export function sealFloor(m) { if (m.man) return null; return S.floors.length ? floorAtWorld(toWorld(frameOf(m), m.pts[0])) : null; }
 
 export function tableModel(m) {
-  let seals = S.marks.filter(x => x.type === 'seal');
+  let seals = S.marks.filter(x => x.type === 'seal' && !x.off);
   const single = m.floor ? floorById(m.floor) : null;
   if (single) seals = seals.filter(x => sealFloor(x) === single);
   else if (m.man) seals = seals.concat(manualMarks()); // partidas manuales, si se pidió en la tabla

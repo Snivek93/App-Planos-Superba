@@ -17,20 +17,23 @@ export function manualLevels(e) { const l = parseLevels(e.lv || ''); return l.le
 
 /* cada partida se ve como un "sello" con cantidad (q) para los mismos cálculos que los sellos del plano */
 export function manualMarks(st) {
-  return manualList(st).filter(e => (+e.q || 0) > 0).map((e, i) => ({
+  // las partidas con "No contar" (e.off) se guardan pero no entran en totales ni en el Excel
+  return manualList(st).filter(e => (+e.q || 0) > 0 && !e.off).map((e, i) => ({
     type:'seal', man:true, src:e, id:'man-' + e.id, n:'M' + (i + 1), st:e.st, loc:e.loc === 'pared' ? 'pared' : 'losa',
     wall:e.loc === 'pared' ? (e.wall || '') : '', mem:!!e.mem, note:e.note || '', sys:'', auto:false, q:+e.q,
     diam: catMeasure(ST[e.st]?.name) || e.diam || '', lvs: manualLevels(e)}));
 }
 
 /* sellos del plano + partidas manuales */
-export function allSeals() { return sealsSorted().concat(manualMarks()); }
+/* sellos que se cuentan: los del plano (menos los marcados "No contar") + partidas manuales */
+export function allSeals() { return sealsSorted().filter(m => !m.off).concat(manualMarks()); }
 
 /* ---------- panel ---------- */
 export function manualHtml() {
   const list = manualList();
   const opt = (v, cur, txt) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(txt)}</option>`;
-  const rows = list.map(e => `<tr data-man="${e.id}">
+  const rows = list.map(e => `<tr data-man="${e.id}"${e.off ? ' class="off"' : ''}>
+      <td><input type="checkbox" data-mf="on"${e.off ? '' : ' checked'} title="Contar esta partida" aria-label="Contar esta partida"></td>
       <td><input data-mf="lv" value="${esc(e.lv || '')}" placeholder="6 o 7-9" aria-label="Nivel(es)" style="width:72px"></td>
       <td><select data-mf="loc" aria-label="Ubicación">${opt('losa', e.loc === 'pared' ? 'pared' : 'losa', 'Losa')}${opt('pared', e.loc === 'pared' ? 'pared' : 'losa', 'Pared')}</select>
         ${e.loc === 'pared' ? `<input data-mf="wall" value="${esc(e.wall || '')}" placeholder="Tipo de pared" aria-label="Tipo de pared" style="width:120px">` : ''}</td>
@@ -38,11 +41,12 @@ export function manualHtml() {
       <td><input data-mf="q" value="${esc(e.q ?? '')}" inputmode="numeric" aria-label="Cantidad por nivel" style="width:56px"></td>
       <td><input data-mf="note" value="${esc(e.note || '')}" placeholder="Origen o nota" aria-label="Nota"></td>
       <td><button class="icon" data-act="manDel" title="Borrar partida" aria-label="Borrar partida">✕</button></td></tr>`).join('');
-  const ms = manualMarks(), tot = ms.reduce((a, m) => a + m.q*m.lvs.length, 0);
+  const ms = manualMarks(), tot = ms.reduce((a, m) => a + m.q*m.lvs.length, 0), nOff = list.filter(e => e.off).length;
   return `<div class="sect" id="manSect"><header><h3>Partidas manuales</h3><span class="btnrow" style="margin:0"><button class="btn" data-act="manPaste">Pegar tabla</button><button class="btn" data-act="manAdd">Agregar</button></span></header>
     <p class="help" style="margin-top:4px">Sellos que se cuentan sin marcarlos en el plano, por ejemplo la lista de tubos por losa de un PDF. Entran en el resumen, el CSV y el Excel para Firestop Suite. La cantidad es por nivel: "7-9" con 5 cuenta 15.</p>
-    ${list.length ? `<div class="mantbl"><table class="fst"><tr><th>Nivel(es)</th><th>Ubicación</th><th>Categoría</th><th>Cant.</th><th>Nota</th><th></th></tr>${rows}</table></div>
-      <p class="small muted" style="margin:6px 0 0">${list.length} ${list.length === 1 ? 'partida' : 'partidas'} · <b>${tot}</b> ${tot === 1 ? 'sello' : 'sellos'} en total${dupWarn(ms)}</p>` : ''}</div>`;
+    ${list.length ? `<div class="mantbl"><table class="fst"><tr><th title="Contar">✓</th><th>Nivel(es)</th><th>Ubicación</th><th>Categoría</th><th>Cant.</th><th>Nota</th><th></th></tr>${rows}</table></div>
+      <p class="small muted" style="margin:6px 0 0">${list.length} ${list.length === 1 ? 'partida' : 'partidas'}${nOff ? ` (${nOff} sin contar)` : ''} · <b>${tot}</b> ${tot === 1 ? 'sello' : 'sellos'} en total${dupWarn(ms)}</p>
+      <div class="manonly"><span class="small">Contar solo las de nivel(es)</span><input id="manOnlyLv" placeholder="-1 o 6-9" aria-label="Niveles a contar" style="width:84px"><button class="btn" data-act="manOnly">Aplicar</button><button class="btn" data-act="manAll">Contar todas</button></div>` : ''}</div>`;
 }
 
 /* aviso: hay sellos del plano y partidas manuales de la misma categoría y ubicación (posible doble conteo) */
@@ -64,11 +68,23 @@ export function addManual() {
 export function manualEdit(id, f, v) {
   const e = manualList().find(x => x.id === id); if (!e) return;
   pushUndo();
+  if (f === 'on') { if (v) delete e.off; else e.off = true; changed(); return; }
   if (f === 'q') { const n = Math.round(parseFloat(String(v).replace(',', '.'))); e.q = isNaN(n) || n < 0 ? 0 : n; }
   else e[f] = String(v).trim();
   if (f === 'loc' && v !== 'pared') e.wall = '';
   changed();
 }
+
+/* dejar contando solo las partidas de ciertos niveles (las demás quedan guardadas con "No contar") */
+export function manualOnly(lvTxt) {
+  const want = parseLevels(String(lvTxt || '').trim());
+  if (!want.length) return toast('Escriba el nivel o los niveles a contar, por ejemplo -1 o 6-9.');
+  pushUndo();
+  let n = 0;
+  for (const e of manualList()) { const on = manualLevels(e).some(l => want.includes(l)); if (on) { delete e.off; n++; } else e.off = true; }
+  changed(); toast(`${n} ${n === 1 ? 'partida queda' : 'partidas quedan'} contando; las demás se guardan sin contar.`);
+}
+export function manualAll() { pushUndo(); manualList().forEach(e => delete e.off); changed(); }
 
 export function manualDel(id) {
   const l = manualList(), i = l.findIndex(x => x.id === id); if (i < 0) return;

@@ -263,6 +263,10 @@ export function drawSeal(m, p, isSel) {
   ctx.font = `700 ${m.n >= 100 ? 10.5 : 13}px "Barlow Semi Condensed", Barlow, sans-serif`;
   if (sa < 0.95) { ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = txtOn(t.color) === '#ffffff' ? t.color : '#ffffff'; ctx.strokeText(String(m.n), x, y + .5); }
   ctx.fillStyle = txtOn(t.color); ctx.fillText(String(m.n), x, y + .5);
+  if (m.off) { // "No contar": queda en el plano, tachado
+    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-r - 2, r + 2); ctx.lineTo(r + 2, -r - 2); ctx.stroke();
+    ctx.strokeStyle = '#21272C'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+  }
   if (m.mem) { // penetración de membrana: la tubería atraviesa una sola cara
     const bx = -r - 3, by = -r - 3;
     ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fillStyle = '#21272C'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();

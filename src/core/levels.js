@@ -33,7 +33,7 @@ export function joinY(list) { return list.length <= 1 ? (list[0] || '') : list.s
 export function defaultLevels(name) { const l = parseLevels(name); return l.length && l.every(x => /\d/.test(x)) ? l.join(', ') : ''; }
 
 // peso de cada sello: cuántos niveles representa la planta donde está
-export function sealWeight(m) { if (m.man) return m.q*m.lvs.length; return S.floors.length ? floorMult(sealFloor(m)) : Math.max(1, parseLevels(S.levels || '').length); }
+export function sealWeight(m) { if (m.off) return 0; if (m.man) return m.q*m.lvs.length; return S.floors.length ? floorMult(sealFloor(m)) : Math.max(1, parseLevels(S.levels || '').length); }
 
 export function allLevels() {
   const out = [];

@@ -70,6 +70,8 @@ export function renderOpts() {
       const st = ms.every(m => m.st === ms[0].st) ? ms[0].st : '';
       const nm = ms.filter(m => m.mem).length;
       h += `<label class="chk small" title="Penetración de membrana: la tubería atraviesa una sola cara"><input type="checkbox" data-o="selMem"${nm === ms.length ? ' checked' : ''}${nm && nm < ms.length ? ' data-mixed="1"' : ''}> Membrana</label>`;
+      const no = ms.filter(m => m.off).length;
+      h += `<label class="chk small" title="El sello queda en el plano pero no se cuenta en los totales ni en el Excel"><input type="checkbox" data-o="selOff"${no === ms.length ? ' checked' : ''}${no && no < ms.length ? ' data-mixed="1"' : ''}> No contar</label>`;
       const wl = ms.every(m => (m.wall || '') === (ms[0].wall || '')) ? (ms[0].wall || '') : null, names = wallNames();
       if (wl && !names.includes(wl)) names.unshift(wl);
       if (ms.some(m => locOf(m) === 'pared')) h += `<span class="lbl">Tipo de pared</span><select data-o="selWall">${wl === null ? '<option value="__">Varios</option>' : ''}<option value=""${wl === '' ? ' selected' : ''}>(sin tipo)</option>${names.map(n => `<option${n === wl ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="__auto">Tomar del plano A</option></select>`;
@@ -197,10 +199,15 @@ export function init() {
     if (a === 'selAlpha') { alphaSliding = false; changed(); return; }
     if (a === 'selColor') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type !== 'seal' && m.type !== 'table') m.color = t.value; } changed(); return; }
 
+    // casillas de la barra de selección (Membrana, No contar)
+    if (a === 'selOff' || a === 'selMem') {
+      const f = a === 'selOff' ? 'off' : 'mem';
+      pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (t.checked) m[f] = true; else delete m[f]; } }
+      changed(); renderOpts(); return;
+    }
     const s = e.target.closest('select[data-o]'); if (!s) return;
     if (s.dataset.o === 'active') { S.active = s.value; save(); renderLayers(); renderOpts(); }
     else if (s.dataset.o === 'moveTo') moveSelToLayer(s.value);
-    else if (s.dataset.o === 'selMem') { pushUndo(); for (const id of sel) { const m = MK(id); if (m && m.type === 'seal') { if (s.checked) m.mem = true; else delete m.mem; } } changed(); renderOpts(); }
     else if (s.dataset.o === 'selWall' && s.value !== '__') {
       const ms = [...sel].map(MK).filter(m => m && m.type === 'seal');
       pushUndo();

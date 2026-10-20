@@ -8,6 +8,7 @@ import { ensurePdf } from '../plans/load.js';
 import { DB, save } from '../core/storage.js';
 import { detectLintels } from './lintels.js';
 import { extraEdits, extraFireRules, extraKeys, isAKey, lookOf, planKeys, sheetOfKey } from '../plans/extraA.js';
+import { isTagRule, tagShapes } from './tagwalls.js';
 
 /* ---------- detección automática (PDF vectorial) ---------- */
 export const FIRE_HL = '#FF2D3D';
@@ -275,8 +276,10 @@ export function visibleEvents(vec, rules, fx) {
   for (const r of rules) if (r.plan === 'B') { const c = (String(r.key || '').match(/^[fs](#[0-9a-f]{6})/i) || [])[1]; if (c && !byColor.has(c.toLowerCase())) byColor.set(c.toLowerCase(), r); }
   const ruleOf = s => byKey.get(s.key) || (byColor.size && s.c ? byColor.get(String(s.c).toLowerCase()) : undefined);
   const excl = fx ? new Set(fx.excl) : null;
+  // paredes por etiqueta (tagwalls.js): franjas sintéticas al final, encima de todo
+  const shapes = fx && fx.tagw && fx.tagw.length && rules.some(isTagRule) ? vec.shapes.concat(tagShapes(fx)) : vec.shapes;
   const bbs = [];
-  for (const s of vec.shapes) {
+  for (const s of shapes) {
     const r = ruleOf(s);
     if (r && !(r.noDots !== false && isSymbol(s)) && !(excl && excl.has(s.i))) bbs.push(s.bb);
   }
@@ -288,7 +291,7 @@ export function visibleEvents(vec, rules, fx) {
   // (las tuberías tampoco se cortan: lo que se dibuja encima de una tubería no la interrumpe)
   const occlude = !rules.every(r => r.plan === 'B' || (r.kind === 'f' && /^f#[0-9a-f]{6}/i.test(r.key || '')));
   const ev = [], cover = []; let started = false, count = 0;
-  for (const s of vec.shapes) {
+  for (const s of shapes) {
     const r = ruleOf(s);
     if (r) {
       if (r.noDots !== false && isSymbol(s)) continue;
@@ -519,7 +522,7 @@ export function lintelsOn(k = 'A') {
   const arq = P.sheets[sheetOfKey(k)]; return !arq || arq.state.auto.lintels !== false;
 }
 /* ajustes del plano A k para escribir (se crean si no hay): sirven para guardar los cargadores encontrados */
-function fxCreate(k) {
+export function fxCreate(k) {
   const rt = RT[k]; if (!rt || !rt.fileId) return null;
   const src = rt.fileId + '#' + (S.plans[k].page || 1), blank = () => ({src, excl:[], masks:[], adds:[], noLint:[], v:0});
   if (k === 'A') { if (!S.auto.fx || S.auto.fx.src !== src) S.auto.fx = blank(); return S.auto.fx; }

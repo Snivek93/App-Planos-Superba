@@ -10,7 +10,50 @@ import { ensureVec, isDot, pathCache, ruleCache } from '../detect/vector.js';
 import { clearAutoSeals, runAuto } from '../detect/cross.js';
 import { renderOpBubble } from '../ui/opacity.js';
 import { redetectLintels, startWallFix, wallFixReset, wallFixSummary } from '../detect/wallfix.js';
-import { fireEdits, fireExtras } from '../detect/vector.js';
+import { fireEdits, fireExtras, fxCreate } from '../detect/vector.js';
+import { analyzeTags, isTagRule, TAG_PREFIX } from '../detect/tagwalls.js';
+import { uid } from '../core/state.js';
+
+/* Paredes cortafuego por etiqueta: se leen los códigos de pared del plano A y su resistencia en la tabla de
+   ensambles; el usuario elige cuáles son cortafuego y cada código queda como una pared de la lista. */
+async function tagDialog() {
+  if (!RT.A.bmp) return toast('Primero suba el plano A.');
+  if (!RT.A.isPdf) return toast('El plano A es una imagen. Para leer las etiquetas se necesita el PDF original.');
+  toast('Leyendo las etiquetas de pared del plano A…');
+  let codes;
+  try { codes = await analyzeTags('A'); } catch (e) { console.error(e); return toast('No se pudieron leer las etiquetas: ' + (e.message || e)); }
+  const withTags = codes.filter(c => c.tags);
+  if (!withTags.length) return toast('No se encontraron etiquetas de pared con línea guía en esta lámina.');
+  const prev = new Map(S.auto.fire.filter(isTagRule).map(r => [r.key.slice(TAG_PREFIX.length), r]));
+  const fx0 = fireEdits('A'), prevH = new Map(((fx0 && fx0.tagw) || []).map(g => [g.code, g.h]));
+  const rows = withTags.map((c, i) => {
+    const h = prevH.has(c.code) ? prevH.get(c.code) : c.h, on = prev.size ? prev.has(c.code) : h > 0;
+    return `<tr data-i="${i}"><td><input type="checkbox" data-f="on"${on ? ' checked' : ''} aria-label="Cortafuego"></td><td><b>${esc(c.code)}</b></td>
+      <td><select data-f="h">${[0, 1, 2, 3, 4].map(v => `<option value="${v}"${v === h ? ' selected' : ''}>${v ? v + ' h' : '—'}</option>`).join('')}</select>${c.h ? '' : ' <span class="muted small">no está en la tabla</span>'}</td>
+      <td style="text-align:right">${c.tags}</td><td style="text-align:right">${c.walls.length}${c.miss ? ` <span class="muted small">(${c.miss} sin leer)</span>` : ''}</td></tr>`;
+  }).join('');
+  const html = `<p class="muted small" style="margin:0">Códigos de pared encontrados en la planta, con la resistencia que da la tabla de ensambles de la lámina. Marque los que son cortafuego: la app toma cada pared etiquetada siguiendo la línea de su etiqueta, mide su grosor y la sigue hasta donde termina. Revise el resultado en el plano; lo que falte se completa con "Afinar paredes a mano".</p>
+    <div class="mantbl" style="max-height:52vh;overflow:auto"><table class="fst"><tr><th></th><th>Código</th><th>Resistencia</th><th>Etiquetas</th><th>Paredes</th></tr>${rows}</table></div>`;
+  const v = await ask({title:'Paredes cortafuego por etiqueta', html, wide:true, buttons:[{label:'Cancelar', value:null}, {label:'Usar estas paredes', value:'ok', primary:true}],
+    read: r => [...r.querySelectorAll('tr[data-i]')].map(tr => ({c: withTags[+tr.dataset.i], on: tr.querySelector('[data-f=on]').checked, h: +tr.querySelector('[data-f=h]').value}))});
+  if (!v) return;
+  const sel = v.filter(x => x.on);
+  const fx = fxCreate('A'); if (!fx) return toast('Primero suba el plano A.');
+  fx.tagw = sel.map(x => ({code:x.c.code, h:x.h, walls:x.c.walls}));
+  fx.v = (fx.v || 0) + 1;
+  // reglas: una por código elegido (se conservan nombre y visibilidad de las que ya estaban)
+  const keep = S.auto.fire.filter(r => !isTagRule(r));
+  for (const r of S.auto.fire.filter(isTagRule)) pathCache.delete(r.id);
+  const tagRules = sel.map(x => {
+    const old = prev.get(x.c.code), conc = /^CO/i.test(x.c.code);
+    const name = old ? old.name : `${x.c.code} · ${conc ? 'concreto ' : ''}${x.h ? x.h + ' h' : 'sin resistencia'}`;
+    return {id: old ? old.id : 'r' + uid(), plan:'A', key:TAG_PREFIX + x.c.code, kind:'f', color:'#C81E2B', w:0, name, on: old ? old.on : true, noDots:false, tag:true};
+  });
+  S.auto.fire = keep.concat(tagRules);
+  S.auto.show = true; RT.A.hl = null; save(); renderAuto(); dirty();
+  const nW = sel.reduce((a, x) => a + x.c.walls.length, 0);
+  toast(`${sel.length} ${sel.length === 1 ? 'tipo de pared' : 'tipos de pared'} cortafuego, ${nW} ${nW === 1 ? 'pared encontrada' : 'paredes encontradas'}. Revíselas en el plano.`);
+}
 
 /* panel */
 export function ruleHasDots(r) { const v = RT[r.plan].vec; return !!(v && (v.byKey.get(r.key) || []).some(isDot)); }
@@ -33,7 +76,7 @@ export function renderAuto() {
     <p class="help" style="margin-top:4px">Opcional: puede seguir marcando todo a mano. Funciona con PDF exportados desde CAD o Revit, no con escaneos. Usted toca una pared o una tubería y la app toma todas las del mismo estilo.</p>
     <div class="sect"><header><h3>Paredes cortafuego (plano A)</h3></header>
       <ul class="cats rules">${a.fire.map(r => ruleRow(r, true)).join('') || '<li class="muted small" style="display:block">Ninguna todavía.</li>'}</ul>
-      <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button>${a.fire.length ? '<button class="btn" data-act="wallFix">Afinar paredes a mano</button>' : ''}</div>
+      <div class="btnrow"><button class="btn" data-act="pickFire">Elegir en el plano</button><button class="btn" data-act="tagFire" title="Para planos con las paredes en negro: se leen los códigos de pared (X4-4C-F2F2, C2C2-3F-C2C2, CO25…) y la tabla de ensambles">Por etiquetas de pared</button>${a.fire.length ? '<button class="btn" data-act="wallFix">Afinar paredes a mano</button>' : ''}</div>
       ${a.fire.length ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-act="lintels"${a.lintels !== false ? ' checked' : ''}> Agregar cargadores sobre puertas entre paredes cortafuego${a.lintels !== false && RT.A.lint ? ` <span class="muted">(${fireExtras().lint.length} encontrados)</span>` : ''}</label>${a.lintels !== false && fireEdits('A') && fireEdits('A').lint ? `<p class="help" style="margin:2px 0 0 26px">Se buscaron una vez y quedan fijos con sus ajustes: no cambian solos. <button class="linkbtn" data-act="relint">Buscar de nuevo</button></p>` : ''}` : ''}
       ${wallFixSummary() ? `<p class="help" style="margin-top:6px">Ajustes a mano: ${esc(wallFixSummary())}. <button class="linkbtn" data-act="wallFixReset">Restaurar todo</button></p>` : ''}</div>
     <div class="sect"><header><h3>Tuberías (plano B)</h3></header>
@@ -78,6 +121,7 @@ export function init() {
     }
     else if (a === 'wallFix') { S.plans.A.visible = true; S.auto.show = true; startWallFix().then(ok => { if (ok) { closePanel(); setTool('wallfix'); dirty(); } }); }
     else if (a === 'wallFixReset') wallFixReset();
+    else if (a === 'tagFire') tagDialog();
     else if (a === 'ron') { rule.on = !rule.on; save(); renderAuto(); dirty(); }
     else if (a === 'rdel') { S.auto.fire = S.auto.fire.filter(r => r !== rule); S.auto.pipes = S.auto.pipes.filter(r => r !== rule); pathCache.delete(rule.id); save(); renderAuto(); dirty(); }
     else if (a === 'zone') { closePanel(); setTool('zone'); }

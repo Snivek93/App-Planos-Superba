@@ -21,7 +21,7 @@ import { floorById, frameOf } from '../plans/floors.js';
 import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
 import { catKey, curSheet, secById, subById, withState } from '../project/model.js';
-import { addManual, manualDel, manualEdit, manualHtml, manualMarks, pasteManual } from './manual.js';
+import { addManual, manualAll, manualDel, manualEdit, manualHtml, manualMarks, manualOnly, pasteManual } from './manual.js';
 import { autoWalls, NO_WALL } from '../detect/wall.js';
 /* nombre del juego de planos (subsección o sección) */
 function setName(sh) { if (!sh) return ''; if (sh.kind === 'arq') return 'los arquitectónicos'; const s = secById(sh.sec), u = sh.sub ? subById(sh.sec, sh.sub) : null; return (s ? s.name : '') + (u ? ' › ' + u.name : ''); }
@@ -348,6 +348,8 @@ export function init() {
     else if (a === 'pdf') pdfDialog();
     else if (a === 'addCat') addCategory(false);
     else if (a === 'manAdd') addManual();
+    else if (a === 'manOnly') manualOnly(document.querySelector('#manOnlyLv')?.value);
+    else if (a === 'manAll') manualAll();
     else if (a === 'manPaste') pasteManual();
     else if (a === 'manDel') manualDel(b.closest('tr').dataset.man);
     else if (a === 'addTray') addTrayCategory(false);
@@ -366,7 +368,7 @@ export function init() {
   });
   ts.addEventListener('change', e => {
     if (e.target.dataset.act === 'sfilter') { S.sealFilter = e.target.value; save(); renderSeals(); return; }
-    if (e.target.dataset.mf) { manualEdit(e.target.closest('tr').dataset.man, e.target.dataset.mf, e.target.value); return; }
+    if (e.target.dataset.mf) { manualEdit(e.target.closest('tr').dataset.man, e.target.dataset.mf, e.target.type === 'checkbox' ? e.target.checked : e.target.value); return; }
     const t = e.target, li = t.closest('li'); if (!li) return;
     if (li.dataset.cat) {
       const c = S.sealTypes.find(x => x.id === li.dataset.cat); if (!c) return;

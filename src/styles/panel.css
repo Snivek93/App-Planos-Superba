@@ -208,3 +208,6 @@ input[type=range]{width:100%;accent-color:var(--tinta)}
 .mantbl .fst td:nth-child(5) input{width:100%;min-width:140px}
 
 #mHtml .checks .lvsep{display:block;padding:0 0 6px 26px;font-size:13px}
+.mantbl tr.off td{opacity:.45} .mantbl tr.off td:first-child{opacity:1}
+.manonly{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.manonly .btn{height:30px}
