@@ -1,5 +1,5 @@
 /* Pestaña Sellos: resumen, lista, categorías, numeración y cruces. */
-import { $, catMeasure, catNameForMeasure, esc, nextCatColor, PEND, ST, trayDims, trayLabel, txtOn } from '../core/constants.js';
+import { $, catMeasure, catNameForMeasure, esc, isDuctName, nextCatColor, PEND, ST, trayDims, trayLabel, txtOn } from '../core/constants.js';
 import { ICON } from '../ui/icons.js';
 import { L, MK, P, RT, S, sel, tool, uid, undoStack, view } from '../core/state.js';
 import { baseW, dist, rectPts, segInter, toLocal, toWorld } from '../core/geometry.js';
@@ -156,7 +156,7 @@ export function renderSeals() {
     <div class="sect"><header><h3>Tabla en el plano</h3></header>
       <p class="help" style="margin-top:4px">Agrega al plano una tabla con la leyenda de colores y la cantidad de sellos por categoría. Se actualiza sola.${hasF ? ' Si la pone dentro de una planta, cuenta solo los sellos de esa planta.' : ''}</p>
       <div class="btnrow"><button class="btn primary" data-act="table">Insertar tabla</button><button class="btn" data-act="pdf">Descargar PDF</button></div></div>
-    <div class="sect"><header><h3>Categorías</h3><span class="btnrow" style="margin:0"><button class="btn" data-act="addTray" title="Categoría de canasta o bandeja de cables con su dimensión A × B">Nueva canasta</button><button class="btn" data-act="addCat">Nueva</button></span></header>
+    <div class="sect"><header><h3>Categorías</h3><span class="btnrow" style="margin:0"><button class="btn" data-act="addTray" title="Categoría de canasta o bandeja de cables con su dimensión A × B">Nueva canasta</button><button class="btn" data-act="addDuct" title="Categoría de ducto de aire, rectangular (A × B) o redondo (ø)">Nuevo ducto</button><button class="btn" data-act="addCat">Nueva</button></span></header>
       <p class="help" style="margin-top:4px">Por ejemplo PVC 150 mm, PVC 100 mm, EMT 25 mm. Cada una con su color. ${curSheet() ? `Son de <b>${esc(setName(curSheet()))}</b>: las comparten los planos de ese juego; los otros juegos tienen las suyas.` : ''}${filt ? ' Las cantidades son de la planta elegida.' : ''}</p>
       <ul class="cats">${S.sealTypes.map(t => {
         const c = seals.filter(x => x.st === t.id).length;
@@ -192,6 +192,56 @@ export async function addCategory(selectIt) {
   pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
   if (selectIt || tool === 'seal') S.sealType = t.id;
   changed(); toast(`Categoría "${name}" creada. Puede cambiarle el color en la pestaña Sellos.`);
+}
+
+/* Ducto de aire, rectangular ("Ducto 600×400 mm") o redondo ("Ducto ø300 mm" / "Ducto ø12\""), con o sin
+   aislamiento. Al exportar a Firestop Suite sale como Ducto Rectangular / Ducto Redondo (Aislado), con su medida. */
+export async function addDuctCategory(selectIt) {
+  const num = x => { const n = parseFloat(String(x ?? '').trim().replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const v = await ask({title:'Nuevo ducto', html:`<p class="muted small" style="margin:0">Se crea la categoría del ducto. Sus sellos llevan esa medida y al exportar a Firestop Suite sale como <b>Ducto Rectangular</b> o <b>Ducto Redondo</b> (aislado si lo marca).</p>
+      <div class="seg" role="group" aria-label="Forma del ducto" id="duKind" style="margin:10px 0"><button data-v="rect" class="on" type="button">Rectangular</button><button data-v="round" type="button">Redondo</button></div>
+      <div class="cprops">
+        <label class="row" data-k="rect"><span>A · ancho (mm)</span><input id="duA" inputmode="decimal" placeholder="600" style="width:90px"></label>
+        <label class="row" data-k="rect"><span>B · alto (mm)</span><input id="duB" inputmode="decimal" placeholder="400" style="width:90px"></label>
+        <label class="row" data-k="round" hidden><span>Diámetro</span><input id="duD" inputmode="decimal" placeholder="300" style="width:90px"><select id="duU" style="width:auto"><option value="mm">mm</option><option value="in">pulg</option></select></label>
+        <label class="row"><span>Aislado</span><input type="checkbox" id="duIs"></label>
+        <label class="row" data-k="is" hidden><span>Espesor del aislamiento (in)</span><input id="duE" inputmode="decimal" value="1" style="width:90px"></label>
+      </div>`,
+    setup: r => {
+      const kind = () => r.querySelector('#duKind .on').dataset.v;
+      const sync = () => { r.querySelectorAll('[data-k=rect]').forEach(e => e.hidden = kind() !== 'rect'); r.querySelectorAll('[data-k=round]').forEach(e => e.hidden = kind() !== 'round'); r.querySelector('[data-k=is]').hidden = !r.querySelector('#duIs').checked; };
+      r.querySelectorAll('#duKind button').forEach(b => b.onclick = () => { r.querySelectorAll('#duKind button').forEach(x => x.classList.toggle('on', x === b)); sync(); });
+      r.querySelector('#duIs').onchange = sync; sync();
+    },
+    buttons:[{label:'Cancelar', value:null}, {label:'Crear', value:'ok', primary:true}],
+    read: r => ({kind: r.querySelector('#duKind .on').dataset.v, a: Math.round(num(r.querySelector('#duA').value)), b: Math.round(num(r.querySelector('#duB').value)),
+      d: num(r.querySelector('#duD').value), u: r.querySelector('#duU').value, is: r.querySelector('#duIs').checked, e: num(r.querySelector('#duE').value)})});
+  if (!v) return;
+  let name, cat;
+  const pre = 'Ducto ' + (v.is ? 'aislado ' : '');
+  if (v.kind === 'rect') {
+    if (!(v.a > 0 && v.b > 0)) return toast('Escriba el ancho y el alto del ducto en milímetros, por ejemplo 600 y 400.');
+    name = pre + trayLabel(v);
+    cat = {L: 'Ducto Rectangular' + (v.is ? ' Aislado' : ''), F:v.a/10, G:v.b/10, D:'', J:'', H:''};
+  } else {
+    if (!(v.d > 0)) return toast('Escriba el diámetro del ducto, por ejemplo 300 mm o 12 pulgadas.');
+    const dTxt = v.u === 'in' ? `ø${v.d}"` : `ø${Math.round(v.d)} mm`;
+    name = pre + dTxt;
+    cat = {L: 'Ducto Redondo' + (v.is ? ' Aislado' : ''), D: v.u === 'in' ? v.d : Math.round(v.d/25.4*100)/100, Dman:true, F:'', G:'', J:'', H:''};
+  }
+  if (S.sealTypes.some(x => x.name.trim().toLowerCase() === name.toLowerCase())) {
+    const t = S.sealTypes.find(x => x.name.trim().toLowerCase() === name.toLowerCase());
+    if (selectIt || tool === 'seal') { S.sealType = t.id; changed(); }
+    return toast(`La categoría "${name}" ya existe.`);
+  }
+  pushUndo();
+  const t = {id:'c' + uid(), name, color: nextCatColor()};
+  const pi = S.sealTypes.findIndex(x => x.id === 'pend');
+  pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
+  if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
+  S.fsx.cats[t.id] = {...cat, I:0, E: v.is ? (v.e || 1) : 0, P:'Pasta FS ONE MAX'};
+  if (selectIt || tool === 'seal') S.sealType = t.id;
+  changed(); toast(`Categoría "${name}" creada.`);
 }
 
 /* Canasta o bandeja de cables: categoría "Canasta A×B mm" con su tipo de penetrante para Firestop Suite
@@ -353,6 +403,7 @@ export function init() {
     else if (a === 'manPaste') pasteManual();
     else if (a === 'manDel') manualDel(b.closest('tr').dataset.man);
     else if (a === 'addTray') addTrayCategory(false);
+    else if (a === 'addDuct') addDuctCategory(false);
     else if (a === 'catDel') deleteCategory(b.closest('li').dataset.cat);
     else if (a === 'catProps') catPropsDialog(b.closest('li').dataset.cat);
     else if (a === 'goto') {
@@ -393,7 +444,9 @@ export function init() {
       pushUndo();
       setSealDiam(m, v);
       const cur = ST[m.st];
-      if (v && (S.auto.catMode === 'diam') && (m.auto || isMeasName(cur.name) || m.st === 'pend')) m.st = catForName(catNameForMeasure(v));
+      // un ducto sigue siendo ducto al cambiarle la medida ("Ducto 600×400 mm" → "Ducto 800×400 mm")
+      const ductPre = isDuctName(cur.name) ? (/aislad/i.test(cur.name) ? 'Ducto aislado ' : 'Ducto ') : '';
+      if (v && (S.auto.catMode === 'diam') && (m.auto || isMeasName(cur.name) || m.st === 'pend')) m.st = catForName(ductPre ? ductPre + v : catNameForMeasure(v));
       m.review = false; changed();
     }
   });

@@ -1,5 +1,5 @@
 /* Excel para Firestop Suite (hoja CALCULADORA) y escritor .zip/.xlsx sin librerías. */
-import { esc, ST, trayDims, trayLabel } from '../core/constants.js';
+import { esc, isDuctName, ST, trayDims, trayLabel } from '../core/constants.js';
 import { P, S } from '../core/state.js';
 import { pushUndo } from '../core/undo.js';
 import { allSeals } from '../panels/manual.js';
@@ -62,7 +62,7 @@ export function guessL(txt) {
   if (/emt|conduit|el[eé]ctr/i.test(txt)) return "Tubería EMT";
   if (/hierro|acero|metal|\bhg\b|galv/i.test(txt)) return "Tubería Metal";
   if (/canasta|bandeja/i.test(txt)) return "Bandeja de Cables";
-  if (/ducto/i.test(txt)) return "Ducto Redondo";
+  if (/ducto/i.test(txt)) return (/[øØ⌀]\s*\d/.test(txt) || !trayDims(txt) ? "Ducto Redondo" : "Ducto Rectangular") + (/aislad/i.test(txt) ? " Aislado" : "");
   if (/cable/i.test(txt)) return "Cables Sueltos";
   return "Tubería Combustible (PVC, CPVC, PEX, PP-R)";
 }
@@ -134,7 +134,7 @@ export async function fsDialog() {
     if (td && (c.F == null || c.F === '') && (c.G == null || c.G === '')) { c.F = td.a/10; c.G = td.b/10; }
     if (c.D == null) c.D = td ? '' : diamToIn(dTxt);
     if (!td && c.D !== '') c.D = catDiam(c, t.name);
-    if (td && (c.J == null || c.J === '')) c.J = 40;   // canasta sin % de ocupación: 40 % de base
+    if (td && !isDuctName(t.name) && !/^Ducto/.test(c.L || '') && (c.J == null || c.J === '')) c.J = 40;   // canasta sin % de ocupación: 40 % de base
     const L = c.L || guessL(t.name + ' ' + sysTxt), P = c.P || guessP(L, c.D);
     return `<tr data-g="${gi}"><td><span class="ldot" style="--c:${t.color}"></span> <b>${esc(t.name)}</b> <span class="muted">(${g.list.length})</span>${ti.set || sysTxt ? `<div class="small muted">${esc([ti.set, sysTxt].filter(Boolean).join(' · '))}</div>` : ''}</td>
       <td>${fsSel('L', FS_OPTS_L, L)}</td>
@@ -192,17 +192,20 @@ export function fsRows(cfg, sh) {
   const rows = [...map.values()].sort((a, b) => String(a.lv).localeCompare(String(b.lv), 'es', {numeric:true}) || a.loc.localeCompare(b.loc) || String(a.wall).localeCompare(String(b.wall)));
   return rows.map(r => {
     const t = ST[r.st], c = cfg.cats[r.st] || {}, w = r.loc === 'losa' ? cfg.losa : (cfg.walls[r.wall] || {N:'Panel de Yeso', O:'2 Horas'});
-    // canasta o bandeja: la dimensión A×B viene del sello (en mm) y se exporta en cm como Bandeja de Cables
+    // canasta o bandeja: la dimensión A×B viene del sello (en mm) y se exporta en cm como Bandeja de Cables;
+    // ducto rectangular: igual A×B, como Ducto Rectangular (con aislamiento si la categoría lo tiene)
     const tray = r.td ? {F: r.td.a/10, G: r.td.b/10} : null;
-    const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray || fsGeomKind(L) !== 'round' ? (tray ? '' : (c.D ?? '')) : (catDiam(c, t.name) ?? '');
+    const duct = isDuctName(t.name) || /^Ducto/.test(c.L || '');
+    const L = tray ? (/Bandeja|Pasante|Rectangular/.test(c.L || '') ? c.L : duct ? 'Ducto Rectangular' + (/aislad/i.test(t.name) ? ' Aislado' : '') : 'Bandeja de Cables') : (c.L || guessL(t.name)), D = tray || fsGeomKind(L) !== 'round' ? (tray ? '' : (c.D ?? '')) : (catDiam(c, t.name) ?? '');
+    const bandeja = tray && !/^Ducto/.test(L);
     // Zona: la aplicación y su subaplicación (Mecánico Agua potable, Eléctrico Acometida…). Penetrante, nivel,
     // barrera y material ya van en sus columnas. La penetración de membrana se marca porque cambia el sellado.
     const zona = ((sh ? zonaOf(sh) : '') || t.name) + (r.mem ? ' (membrana)' : '');
     const meta = {plano: sh ? sh.name : '', planta: r.planta, below: r.below, auto: r.auto, man: r.man, wall: r.loc === 'pared' ? r.wall : '', cat: t.name};
     const nivel = /^-?\d+(\.\d+)?$/.test(r.lv) ? +r.lv : r.lv;
     const nb = x => x === '' || x == null ? undefined : +x;
-    const J = c.J === '' || c.J == null ? (tray ? 0.4 : 0) : (+c.J > 1 ? +c.J/100 : +c.J);
-    return [zona, nivel, r.n, nb(D), tray || c.E === '' || c.E == null ? 0 : +c.E, nb(tray ? tray.F : c.F), nb(tray ? tray.G : c.G), tray ? undefined : nb(c.H),
+    const J = c.J === '' || c.J == null ? (bandeja ? 0.4 : 0) : (+c.J > 1 ? +c.J/100 : +c.J);
+    return [zona, nivel, r.n, nb(D), bandeja || c.E === '' || c.E == null ? 0 : +c.E, nb(tray ? tray.F : c.F), nb(tray ? tray.G : c.G), tray ? undefined : nb(c.H),
       c.I === '' || c.I == null ? 0 : +c.I, J, FS_K[L] || '', L, r.loc === 'losa' ? 'Entrepiso' : 'Pared', w.N, w.O, c.P || guessP(L, D), undefined, '', meta];
   });
 }

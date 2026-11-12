@@ -117,10 +117,17 @@ export function trayDims(txt) {
 export const trayLabel = d => `${d.a}×${d.b} mm`;
 export const isTrayName = n => /^\s*(canasta|bandeja)/i.test(String(n || '')) && !!trayDims(n);
 export const isDiamName = n => /^[øØ⌀]\s*\d/.test(String(n || '').trim());
+/* ductos de aire: "Ducto 600×400 mm" (rectangular) o "Ducto ø300 mm" / "Ducto ø12\"" (redondo); "Ducto aislado …" */
+export const isDuctName = n => /^\s*ducto/i.test(String(n || ''));
+const DUCT_D_RE = /[øØ⌀]\s*(\d+(?:[.,]\d+)?)\s*(mm|"|”|in|pulg)?/i;
+export const isRectDuctName = n => isDuctName(n) && !DUCT_D_RE.test(n) && !!trayDims(n);
+export const isRoundDuctName = n => isDuctName(n) && DUCT_D_RE.test(n);
+export function ductDiam(n) { const m = String(n || '').match(DUCT_D_RE); return m ? `ø${m[1].replace(',', '.')}${m[2] && m[2] !== 'mm' ? '"' : ' mm'}` : ''; }
 /* lo que un sello de esa categoría lleva en "diámetro / dimensión" (o null si la categoría no es de medida) */
 export function catMeasure(name) {
   if (isDiamName(name)) return String(name).trim();
-  if (isTrayName(name)) return trayLabel(trayDims(name));
+  if (isTrayName(name) || isRectDuctName(name)) return trayLabel(trayDims(name));
+  if (isRoundDuctName(name)) return ductDiam(name);
   return null;
 }
 /* nombre de categoría para una medida de sello: "ø50 mm" → "ø50 mm"; "400×100 mm" → "Canasta 400×100 mm" */
