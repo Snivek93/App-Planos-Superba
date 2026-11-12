@@ -16,7 +16,7 @@ import { save } from '../core/storage.js';
 import { ask, changed, closePanel, renderTop, toast } from '../ui/app.js';
 import { exportQuant, floorLevels, floorMult, joinY, LOC_NAME, locOf, sealWeight } from '../core/levels.js';
 import { catPropsDialog, catSummary } from '../export/penetrante.js';
-import { fsDialog } from '../export/firestop.js';
+import { fsDialog, mmToIn } from '../export/firestop.js';
 import { floorById, frameOf } from '../plans/floors.js';
 import { diamLabel, ensureLabels } from '../detect/vector.js';
 import { catForName } from '../detect/cross.js';
@@ -191,7 +191,7 @@ export async function addCategory(selectIt) {
         <label class="row"><span>Nombre</span><input id="caN" placeholder="Por ejemplo: PVC 150 mm" style="width:220px"></label>
         <label class="row"><span>Tubería aislada</span><input type="checkbox" id="caIs"></label>
         <label class="row" data-k="is" hidden><span>Tipo de penetrante</span><select id="caL" style="width:auto">${AISL.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>
-        <label class="row" data-k="is" hidden><span>Espesor del aislamiento (in)</span><input id="caE" inputmode="decimal" value="1" style="width:90px"></label>
+        <label class="row" data-k="is" hidden><span>Espesor del aislamiento</span><input id="caE" inputmode="decimal" value="25" style="width:70px"><select id="caU" style="width:auto"><option value="mm" selected>mm</option><option value="in">pulg</option></select></label>
       </div><p class="muted small" data-k="is" hidden style="margin:6px 0 0">Al exportar a Firestop Suite sale con ese tipo de penetrante y ese espesor de aislamiento. Se puede cambiar después en "Definir tipo de penetrante".</p>`,
     setup: r => {
       const n = r.querySelector('#caN'), is = r.querySelector('#caIs'), L = r.querySelector('#caL');
@@ -201,7 +201,7 @@ export async function addCategory(selectIt) {
       n.onkeydown = e => { if (e.key === 'Enter') document.querySelector('#mActions .primary')?.click(); };
     },
     buttons:[{label:'Cancelar', value:null}, {label:'Crear', value:'ok', primary:true}],
-    read: r => ({name: r.querySelector('#caN').value.trim(), is: r.querySelector('#caIs').checked, L: r.querySelector('#caL').value, e: num(r.querySelector('#caE').value)})});
+    read: r => ({name: r.querySelector('#caN').value.trim(), is: r.querySelector('#caIs').checked, L: r.querySelector('#caL').value, e: num(r.querySelector('#caE').value), u: r.querySelector('#caU').value})});
   if (!v) return;
   const name = v.name;
   if (!name) return toast('Escriba el nombre de la categoría.');
@@ -212,10 +212,11 @@ export async function addCategory(selectIt) {
   // tubería aislada: tipo de penetrante y espesor del aislamiento para Firestop Suite desde ya
   if (v.is) {
     if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
-    S.fsx.cats[t.id] = {L: v.L, E: v.e || 1, I: 0};
+    const e = v.e || (v.u === 'mm' ? 25 : 1);
+    S.fsx.cats[t.id] = {L: v.L, E: v.u === 'mm' ? mmToIn(e) : e, Eu: v.u, I: 0};
   }
   if (selectIt || tool === 'seal') S.sealType = t.id;
-  changed(); toast(`Categoría "${name}" creada${v.is ? ` como ${v.L.replace(/ \(.*\)/, '')}, aislamiento ${v.e || 1}"` : ''}. Puede cambiarle el color en la pestaña Sellos.`);
+  changed(); toast(`Categoría "${name}" creada${v.is ? ` como ${v.L.replace(/ \(.*\)/, '')}, aislamiento ${v.e || (v.u === 'mm' ? 25 : 1)}${v.u === 'mm' ? ' mm' : '"'}` : ''}. Puede cambiarle el color en la pestaña Sellos.`);
 }
 
 /* Ducto de aire, rectangular ("Ducto 600×400 mm") o redondo ("Ducto ø300 mm" / "Ducto ø12\""), con o sin
@@ -229,7 +230,7 @@ export async function addDuctCategory(selectIt) {
         <label class="row" data-k="rect"><span>B · alto (mm)</span><input id="duB" inputmode="decimal" placeholder="400" style="width:90px"></label>
         <label class="row" data-k="round" hidden><span>Diámetro</span><input id="duD" inputmode="decimal" placeholder="300" style="width:90px"><select id="duU" style="width:auto"><option value="mm">mm</option><option value="in">pulg</option></select></label>
         <label class="row"><span>Aislado</span><input type="checkbox" id="duIs"></label>
-        <label class="row" data-k="is" hidden><span>Espesor del aislamiento (in)</span><input id="duE" inputmode="decimal" value="1" style="width:90px"></label>
+        <label class="row" data-k="is" hidden><span>Espesor del aislamiento</span><input id="duE" inputmode="decimal" value="25" style="width:70px"><select id="duEU" style="width:auto"><option value="mm" selected>mm</option><option value="in">pulg</option></select></label>
       </div>`,
     setup: r => {
       const kind = () => r.querySelector('#duKind .on').dataset.v;
@@ -239,7 +240,7 @@ export async function addDuctCategory(selectIt) {
     },
     buttons:[{label:'Cancelar', value:null}, {label:'Crear', value:'ok', primary:true}],
     read: r => ({kind: r.querySelector('#duKind .on').dataset.v, a: Math.round(num(r.querySelector('#duA').value)), b: Math.round(num(r.querySelector('#duB').value)),
-      d: num(r.querySelector('#duD').value), u: r.querySelector('#duU').value, is: r.querySelector('#duIs').checked, e: num(r.querySelector('#duE').value)})});
+      d: num(r.querySelector('#duD').value), u: r.querySelector('#duU').value, is: r.querySelector('#duIs').checked, e: num(r.querySelector('#duE').value), eu: r.querySelector('#duEU').value})});
   if (!v) return;
   let name, cat;
   const pre = 'Ducto ' + (v.is ? 'aislado ' : '');
@@ -263,7 +264,8 @@ export async function addDuctCategory(selectIt) {
   const pi = S.sealTypes.findIndex(x => x.id === 'pend');
   pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
   if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
-  S.fsx.cats[t.id] = {...cat, I:0, E: v.is ? (v.e || 1) : 0, P:'Pasta FS ONE MAX'};
+  const e = v.e || (v.eu === 'mm' ? 25 : 1);
+  S.fsx.cats[t.id] = {...cat, I:0, E: v.is ? (v.eu === 'mm' ? mmToIn(e) : e) : 0, Eu: v.eu, P:'Pasta FS ONE MAX'};
   if (selectIt || tool === 'seal') S.sealType = t.id;
   changed(); toast(`Categoría "${name}" creada.`);
 }

@@ -87,9 +87,21 @@ export function fsGeomKind(L) {
 
 export function fsNeedsJ(L) { return /Bandeja|Pasante/.test(L); }
 
+/* Espesor del aislamiento: se guarda en pulgadas (c.E, lo que lleva el Excel) y se puede escribir en mm (c.Eu = 'mm').
+   De mm a pulgadas se redondea al 1/8" más cercano si queda a menos de 0.04" (25 mm → 1", 13 mm → 1/2", 38 mm → 1 1/2"). */
+export function mmToIn(mm) { const v = mm/25.4, r = Math.round(v*8)/8; return Math.abs(v - r) < 0.04 ? r : Math.round(v*1000)/1000; }
+export function inToMm(i) { return Math.round(i*25.4); }
+export const insTxt = c => c.Eu === 'mm' ? `${inToMm(+c.E)} mm` : null;
+export function readIns(q, L) {
+  if (!FS_AISL.test(L)) return {E:0};
+  const n = parseFloat(String(q('E').value || '').replace(',', '.')) || 0, u = q('Eu') ? q('Eu').value : 'in';
+  return u === 'mm' ? {E: n ? mmToIn(n) : 0, Eu:'mm'} : {E:n, Eu:'in'};
+}
 export function fsGeomCell(c, L) {
   const inp = (f, v, ph, w = 58) => `<label class="gi" data-g="${f}"><span>${ph}</span><input data-f="${f}" value="${v ?? ''}" inputmode="decimal" style="width:${w}px"></label>`;
-  return `<div class="geom">${inp('D', c.D, 'Ø (in)')}${inp('F', c.F, 'A (cm)')}${inp('G', c.G, 'B (cm)')}${inp('H', c.H, 'Prof. (cm)')}${inp('E', c.E ?? 0, 'Aislam. (in)')}${inp('J', c.J ?? '', '% ocup.', 50)}</div>`;
+  const mm = c.Eu === 'mm', ev = mm ? (+c.E ? inToMm(+c.E) : 0) : (c.E ?? 0);
+  const ins = `<label class="gi" data-g="E"><span>Aislam.</span><input data-f="E" value="${ev}" inputmode="decimal" style="width:52px"><select data-f="Eu" style="width:auto"><option value="in"${mm ? '' : ' selected'}>in</option><option value="mm"${mm ? ' selected' : ''}>mm</option></select></label>`;
+  return `<div class="geom">${inp('D', c.D, 'Ø (in)')}${inp('F', c.F, 'A (cm)')}${inp('G', c.G, 'B (cm)')}${inp('H', c.H, 'Prof. (cm)')}${ins}${inp('J', c.J ?? '', '% ocup.', 50)}</div>`;
 }
 
 export function fsSyncGeom(tr) {
@@ -164,7 +176,7 @@ export async function fsDialog() {
         const g = groups[+tr.dataset.g], q = f => tr.querySelector(`[data-f=${f}]`);
         const L = q('L').value, k = fsGeomKind(L);
         const c = {L, P:q('P').value, I:num(q('I').value) || 0, D:num(q('D').value), F:num(q('F').value), G:num(q('G').value), H:num(q('H').value),
-          E: FS_AISL.test(L) ? (num(q('E').value) || 0) : 0, J: fsNeedsJ(L) ? num(q('J').value) : ''};
+          ...readIns(q, L), J: fsNeedsJ(L) ? num(q('J').value) : ''};
         if (k === 'round') { c.F = ''; c.G = ''; c.H = ''; }
         if (k === 'rect') { c.D = ''; c.H = ''; }
         if (k === 'caja') c.D = '';

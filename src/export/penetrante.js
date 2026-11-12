@@ -2,7 +2,7 @@
 import { ST, trayDims } from '../core/constants.js';
 import { S } from '../core/state.js';
 import { ask, changed } from '../ui/app.js';
-import { catDiam, diamToIn, FS_AISL, markDman, FS_OPTS_L, FS_OPTS_P, fsGeomCell, fsGeomKind, fsNeedsJ, fsSel, fsSyncGeom, guessL, guessP } from './firestop.js';
+import { catDiam, diamToIn, FS_AISL, insTxt, markDman, readIns, FS_OPTS_L, FS_OPTS_P, fsGeomCell, fsGeomKind, fsNeedsJ, fsSel, fsSyncGeom, guessL, guessP } from './firestop.js';
 
 /* ---------- datos de penetrante por categoría (usados por la tabla del plano y por el Excel) ---------- */
 export function catProps(id) { return (S.fsx && S.fsx.cats && S.fsx.cats[id]) || null; }
@@ -30,7 +30,7 @@ export function geomLabel(t, c, sample) {
   if ((k === 'round' || k === 'vacio') && D !== '' && D != null) s = `Ø ${fracIn(D)}`;
   else if (k === 'caja' && c.F && c.G) s = `${cm(c.F)}×${cm(c.G)}${c.H ? '×' + cm(c.H) : ''} cm`;
   else if ((k === 'rect' || k === 'vacio') && c.F && c.G) s = `${cm(c.F)}×${cm(c.G)} cm`;
-  if (s && FS_AISL.test(c.L || '') && +c.E) s += ` + aisl. ${fracIn(c.E)}`;
+  if (s && FS_AISL.test(c.L || '') && +c.E) s += ` + aisl. ${insTxt(c) || fracIn(c.E)}`;
   if (s && fsNeedsJ(c.L || '') && c.J !== '' && c.J != null) s += ` (${Math.round(+c.J > 1 ? +c.J : +c.J*100)} %)`;
   return s || (sample && sample.diam) || '';
 }
@@ -66,7 +66,7 @@ export async function catPropsDialog(id) {
     read: r => {
       const q = f => r.querySelector(`#cpRow [data-f=${f}]`), Lv = q('L').value, k = fsGeomKind(Lv);
       const c = {L:Lv, P:q('P').value, I:num(q('I').value) || 0, D:num(q('D').value), F:num(q('F').value), G:num(q('G').value), H:num(q('H').value),
-        E: FS_AISL.test(Lv) ? (num(q('E').value) || 0) : 0, J: fsNeedsJ(Lv) ? num(q('J').value) : ''};
+        ...readIns(q, Lv), J: fsNeedsJ(Lv) ? num(q('J').value) : ''};
       if (k === 'round') { c.F = ''; c.G = ''; c.H = ''; }
       if (k === 'rect') { c.D = ''; c.H = ''; }
       if (k === 'caja') c.D = '';
