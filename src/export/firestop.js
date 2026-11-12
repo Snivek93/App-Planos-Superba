@@ -68,6 +68,7 @@ export function guessL(txt) {
 }
 
 export function guessP(L, D) {
+  if (/Combustible Aislada/.test(L)) return "Cinta con Collar Metálico CP 648-E/ER";   // con pasta Firestop no tiene sistema
   if (/Combustible/.test(L) && +D > 2) return "Collarín CP 643N/644";
   if (/Cobre/.test(L)) return "Cinta con Collar Metálico CP 648-E/ER";
   return "Pasta FS ONE MAX";

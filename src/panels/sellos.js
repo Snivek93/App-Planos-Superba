@@ -184,14 +184,38 @@ export function highlightSealRow() {
 export let ts;
 
 export async function addCategory(selectIt) {
-  const name = await ask({title:'Nueva categoría de sello', input:'', placeholder:'Por ejemplo: PVC 150 mm', ok:'Crear'});
-  if (!name) return;
+  const num = x => { const n = parseFloat(String(x ?? '').trim().replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const AISL = ['Tubería Cobre Aislado HVAC', 'Tubería Metal Aislado', 'Tubería Combustible Aislada (PVC, CPVC, PEX, PP-R)'];
+  const guess = n => /cobre|hvac|refrig/i.test(n) ? AISL[0] : /hierro|acero|metal|\bhg\b|galv/i.test(n) ? AISL[1] : AISL[2];
+  const v = await ask({title:'Nueva categoría de sello', html:`<div class="cprops">
+        <label class="row"><span>Nombre</span><input id="caN" placeholder="Por ejemplo: PVC 150 mm" style="width:220px"></label>
+        <label class="row"><span>Tubería aislada</span><input type="checkbox" id="caIs"></label>
+        <label class="row" data-k="is" hidden><span>Tipo de penetrante</span><select id="caL" style="width:auto">${AISL.map(o => `<option>${esc(o)}</option>`).join('')}</select></label>
+        <label class="row" data-k="is" hidden><span>Espesor del aislamiento (in)</span><input id="caE" inputmode="decimal" value="1" style="width:90px"></label>
+      </div><p class="muted small" data-k="is" hidden style="margin:6px 0 0">Al exportar a Firestop Suite sale con ese tipo de penetrante y ese espesor de aislamiento. Se puede cambiar después en "Definir tipo de penetrante".</p>`,
+    setup: r => {
+      const n = r.querySelector('#caN'), is = r.querySelector('#caIs'), L = r.querySelector('#caL');
+      let touched = false; L.onchange = () => { touched = true; };
+      const sync = () => { r.querySelectorAll('[data-k=is]').forEach(e => e.hidden = !is.checked); if (!touched) L.value = guess(n.value); };
+      is.onchange = sync; n.oninput = sync; sync(); setTimeout(() => n.focus(), 60);
+      n.onkeydown = e => { if (e.key === 'Enter') document.querySelector('#mActions .primary')?.click(); };
+    },
+    buttons:[{label:'Cancelar', value:null}, {label:'Crear', value:'ok', primary:true}],
+    read: r => ({name: r.querySelector('#caN').value.trim(), is: r.querySelector('#caIs').checked, L: r.querySelector('#caL').value, e: num(r.querySelector('#caE').value)})});
+  if (!v) return;
+  const name = v.name;
+  if (!name) return toast('Escriba el nombre de la categoría.');
   pushUndo();
   const t = {id:'c' + uid(), name, color: nextCatColor()};
   const pi = S.sealTypes.findIndex(x => x.id === 'pend');
   pi >= 0 ? S.sealTypes.splice(pi, 0, t) : S.sealTypes.push(t);
+  // tubería aislada: tipo de penetrante y espesor del aislamiento para Firestop Suite desde ya
+  if (v.is) {
+    if (!S.fsx) S.fsx = {walls:{}, losa:{N:'Concreto', O:'2 Horas'}, cats:{}};
+    S.fsx.cats[t.id] = {L: v.L, E: v.e || 1, I: 0};
+  }
   if (selectIt || tool === 'seal') S.sealType = t.id;
-  changed(); toast(`Categoría "${name}" creada. Puede cambiarle el color en la pestaña Sellos.`);
+  changed(); toast(`Categoría "${name}" creada${v.is ? ` como ${v.L.replace(/ \(.*\)/, '')}, aislamiento ${v.e || 1}"` : ''}. Puede cambiarle el color en la pestaña Sellos.`);
 }
 
 /* Ducto de aire, rectangular ("Ducto 600×400 mm") o redondo ("Ducto ø300 mm" / "Ducto ø12\""), con o sin
