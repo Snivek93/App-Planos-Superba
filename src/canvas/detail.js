@@ -13,7 +13,7 @@ import { lookOf, planKeys } from '../plans/extraA.js';
 const det = {};                        // detalle listo por plano (A, B y los A adicionales)
 const task = {};                       // dibujo en curso (se cancela si la vista cambia)
 let timer = null, seq = 0;
-const CAP = () => isMobile || LITE ? 6e6 : 12e6;     // píxeles máximos del detalle (memoria)
+const CAP = () => isMobile || LITE ? 5e6 : 8e6;      // píxeles máximos del detalle (memoria)
 
 const native = (rt, p) => rt.bmp ? rt.bmp.width/p.w : 0;
 
@@ -30,7 +30,8 @@ function need(k) {
     rect = rect ? [Math.min(rect[0], r[0]), Math.min(rect[1], r[1]), Math.max(rect[2], r[2]), Math.max(rect[3], r[3])] : r;
     scale = Math.max(scale, dpr*view.z*fr.s);
   }
-  if (!rect || scale <= native(rt, p)*1.15) return null;
+  // con poco acercamiento la imagen base se ve bien: redibujar desde el PDF es lo más pesado de la app
+  if (!rect || scale <= native(rt, p)*1.5) return null;
   return {rect, scale};
 }
 
@@ -41,7 +42,7 @@ function covers(d, n) {
 export function scheduleDetail() {
   if (EXPORT) return;
   clearTimeout(timer);
-  timer = setTimeout(check, 260);
+  timer = setTimeout(check, 450);
 }
 
 function check() {
@@ -54,9 +55,10 @@ function check() {
     if (d && d.rt === rt && d.page === p.page && covers(d, n)) continue;
     // zona un poco más grande que la vista, para que mover un poco no obligue a redibujar
     const w = n.rect[2] - n.rect[0], h = n.rect[3] - n.rect[1];
-    let s = n.scale, pad = 0.35;
+    // escala en pasos (×1.6): acercar o alejar un poco reutiliza el detalle ya dibujado en vez de redibujarlo
+    let s = Math.pow(1.6, Math.ceil(Math.log(n.scale)/Math.log(1.6) - 1e-9)), pad = 0.6;
     let r = [n.rect[0] - w*pad, n.rect[1] - h*pad, n.rect[2] + w*pad, n.rect[3] + h*pad];
-    if ((r[2]-r[0])*(r[3]-r[1])*s*s > CAP()) { r = n.rect.slice(); if (w*h*s*s > CAP()) s = Math.sqrt(CAP()/(w*h)); }
+    if ((r[2]-r[0])*(r[3]-r[1])*s*s > CAP()) { r = [n.rect[0] - w*0.15, n.rect[1] - h*0.15, n.rect[2] + w*0.15, n.rect[3] + h*0.15]; if ((r[2]-r[0])*(r[3]-r[1])*s*s > CAP()) { r = n.rect.slice(); s = Math.max(n.scale, Math.min(s, Math.sqrt(CAP()/(w*h)))); if (w*h*s*s > CAP()) s = Math.sqrt(CAP()/(w*h)); } }
     r = [Math.max(0, r[0]), Math.max(0, r[1]), Math.min(p.w, r[2]), Math.min(p.h, r[3])];
     render(k, rt, p, r, s);
   }
@@ -74,8 +76,9 @@ async function render(k, rt, p, r, s) {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H);
     const t = pg.render({canvasContext:x, viewport:vp, transform:[1, 0, 0, 1, -r[0]*s, -r[1]*s]});
-    task[k] = t;
+    task[k] = t; const t0 = performance.now();
     await t.promise;
+    if (__DEBUG__) (window.__detLog ||= []).push([k, W*H, Math.round(performance.now() - t0)]);
     if (task[k] === t) task[k] = null;
     if (RT[k] !== rt) return;
     const old = det[k]; if (old) { old.c.width = old.c.height = 0; if (old.tinted) old.tinted.width = old.tinted.height = 0; }

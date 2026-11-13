@@ -1,7 +1,7 @@
 /* Archivos de planos guardados una sola vez y caché de planos en memoria. */
 import { P, RT, S } from '../core/state.js';
 import { isMobile, LITE } from '../core/constants.js';
-import { dirty } from '../canvas/render.js';
+import { dirty, freeMips } from '../canvas/render.js';
 import { closeOrphanPdfs, destroyPdf, loadFile, makeTint } from '../plans/load.js';
 import { renderPlans } from '../panels/planos.js';
 import { DB } from '../core/storage.js';
@@ -42,13 +42,13 @@ export function rtRemember(rt, fileId, page) {
   rt.fileId = fileId; rt.pg = page;
   const key = rtKey(fileId, page); rtCache.delete(key); rtCache.set(key, rt);
   // planos en memoria: pocos, porque cada uno ocupa decenas de MB; los demás se abren rápido desde la caché del navegador
-  const max = isMobile ? 3 : LITE ? 2 : 4;
+  const max = isMobile ? 2 : LITE ? 2 : 3;
   const active = new Set(Object.values(RT));
   for (const [k, v] of [...rtCache.entries()]) {
     if (rtCache.size <= max) break;
     if (active.has(v)) continue;
     rtCache.delete(k);
-    if (v.bmp && v.bmp.close) v.bmp.close();
+    freeMips(v.bmp); if (v.bmp && v.bmp.close) v.bmp.close();
     freeCanvas(v.bmp); freeCanvas(v.tinted); freeCanvas(v.hl && v.hl.c);
     const pdf = v.pdf;
     v.bmp = v.tinted = v.hl = v.vec = v.pdf = v.text = null;
@@ -57,7 +57,7 @@ export function rtRemember(rt, fileId, page) {
 }
 /* suelta la memoria de un lienzo ya sin uso de inmediato (si no, el navegador la libera tarde y al abrir
    muchos planos seguidos la pestaña se puede quedar sin memoria) */
-function freeCanvas(c) { if (c && c.getContext && c.width) { c.width = 0; c.height = 0; } }
+function freeCanvas(c) { if (!c) return; freeMips(c); if (c.getContext && c.width) { c.width = 0; c.height = 0; } }
 /* cierra el documento PDF en el lector (worker) si ningún plano en memoria lo sigue usando */
 function releasePdf(pdf) {
   if (!pdf || !pdf.destroy) return;

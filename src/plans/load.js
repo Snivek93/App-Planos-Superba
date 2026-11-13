@@ -77,14 +77,23 @@ export function makeThumb(src, fileId, page) {
 /* Documentos PDF abiertos en el lector. El lector (worker) guarda cada documento hasta que se cierra con destroy():
    no se libera solo aunque ya nadie lo use, y al pasar por muchos planos la pestaña se quedaba sin memoria. */
 const openDocs = new Map();
+/* Un solo lector (worker) para todos los PDF: si cada documento crea el suyo, los lectores se iban acumulando
+   al pasar de un plano a otro (cada uno con cientos de MB) y la computadora se ponía lenta aun sin hacer nada. */
+let sharedWorker = null;
+function pdfWorker() {
+  if (!sharedWorker || sharedWorker.destroyed) sharedWorker = new pdfjsLib.PDFWorker({name: 'planos'});
+  return sharedWorker;
+}
 export async function openPdf(blob, own = false) {
   await pdfReady().catch(() => null);
   if (!pdfjsLib) throw new Error('No se pudo cargar el lector de PDF. Recargue la página.');
-  const task = pdfjsLib.getDocument({data: new Uint8Array(await blob.arrayBuffer())});
+  const task = pdfjsLib.getDocument({data: new Uint8Array(await blob.arrayBuffer()), worker: pdfWorker()});
   const doc = await task.promise;
   openDocs.set(doc, {t: Date.now(), own});
   return doc;
 }
+export function pdfDocCount() { return openDocs.size; }
+export function resetPdfWorker() { for (const d of [...openDocs.keys()]) destroyPdf(d); if (sharedWorker) { sharedWorker.destroy(); sharedWorker = null; } }
 export function destroyPdf(doc) {
   if (!doc) return;
   openDocs.delete(doc);

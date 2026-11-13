@@ -6,7 +6,7 @@ import { setTool } from './editor/tools.js';
 import { DB, persistNow } from './core/storage.js';
 import { renderAll } from './ui/app.js';
 import { blankState, hydrate, newProjectData, RT_BLANK, showHome } from './project/model.js';
-import { openSheet } from './project/sheets.js';
+import { memReloadNotice, openSheet } from './project/sheets.js';
 import { clearExtras } from './plans/extraA.js';
 import { migrateLegacy } from './project/archive.js';
 
@@ -28,6 +28,7 @@ export function init() {
     renderAll(); setTool('select'); resize();
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     if (P.active && P.sheets[P.active]) await openSheet(P.active); else showHome();
+    memReloadNotice();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(dirty);
   })();
 }

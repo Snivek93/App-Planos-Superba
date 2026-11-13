@@ -22,12 +22,12 @@ export let isMobile;
 
 export let MAXDIM;
 /* Ahorro de memoria (computadoras con poca RAM): planos base más livianos y menos planos guardados en memoria.
-   Se activa en Archivo; si el navegador informa 4 GB o menos, viene activado. */
+   Se activa en Archivo; viene activado si el navegador informa 4 GB o menos, o 4 núcleos o menos. */
 export let LITE = false;
 const LITE_KEY = 'cortafuego-lite';
 function liteSetting() {
   try { const v = localStorage.getItem(LITE_KEY); if (v === '1') return true; if (v === '0') return false; } catch (e) {}
-  return !!(navigator.deviceMemory && navigator.deviceMemory <= 4);
+  return !!((navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4));
 }
 export function setLite(on) { try { localStorage.setItem(LITE_KEY, on ? '1' : '0'); } catch (e) {} }
 
@@ -99,8 +99,10 @@ export function init() {
   isMobile = matchMedia('(pointer:coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
   LITE = liteSetting();
   // con "ahorro de memoria" la imagen base de cada plano es más chica; al acercar se vuelve a dibujar nítida desde el PDF
-  MAXDIM = isMobile ? 4096 : LITE ? 5000 : 7000;
-  MAXAREA = isMobile ? 9e6 : LITE ? 9e6 : 22e6;
+  // la imagen base no necesita ser enorme: al acercar, el detalle se vuelve a dibujar nítido desde el PDF.
+  // Con 22 Mpx cada plano ocupaba ~90 MB por capa y en computadoras de oficina la app se ponía muy lenta.
+  MAXDIM = isMobile ? 4096 : LITE ? 4500 : 5600;
+  MAXAREA = isMobile ? 9e6 : LITE ? 7e6 : 12e6;
   ST = new Proxy({}, {get: (_, id) => stFind(String(id))});
 }
 

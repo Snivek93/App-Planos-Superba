@@ -185,6 +185,13 @@ export function interacting() { return !!gesture || performance.now() - lastWhee
 
 /* Copias reducidas del plano para dibujar rápido con la vista alejada. Se generan en segundo plano
    (fuera del hilo principal cuando el navegador lo permite); mientras tanto se usa la imagen completa. */
+/* suelta de inmediato las copias reducidas de una imagen que ya no se usa (son imágenes nativas: si se esperan
+   a la recolección de memoria, el navegador las libera tarde y la memoria crece al pasar de un plano a otro) */
+export function freeMips(src) {
+  const arr = src && mipCache.get(src); if (!arr) return;
+  for (const m of arr.slice(1)) { try { if (m.close) m.close(); else m.width = m.height = 0; } catch (e) {} }
+  arr.length = 1; arr.dead = true; mipCache.delete(src);
+}
 export function mipLevel(src, level) {
   let arr = mipCache.get(src);
   if (!arr) { arr = [src]; mipCache.set(src, arr); buildMips(src, arr); }
@@ -198,6 +205,7 @@ async function buildMips(src, arr) {
       let next;
       try { next = await createImageBitmap(prev, {resizeWidth:w, resizeHeight:h, resizeQuality:'high'}); }
       catch (e) { next = document.createElement('canvas'); next.width = w; next.height = h; const g = next.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, w, h); }
+      if (arr.dead) { if (next.close) next.close(); return; }
       arr.push(next); prev = next;
       await new Promise(r => setTimeout(r, 0));
     }

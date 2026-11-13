@@ -1,11 +1,11 @@
 /* Abrir, crear, mover y eliminar hojas (arquitectónicos y planos de instalaciones). */
-import { $, esc, isMobile, pdfjsLib, pdfReady } from '../core/constants.js';
+import { $, esc, isMobile, LITE, pdfjsLib, pdfReady } from '../core/constants.js';
 import { P, RT, S, sel, stateVars } from '../core/state.js';
 import { dirty } from '../canvas/render.js';
 import { setTool } from '../editor/tools.js';
 import { fit } from '../canvas/view.js';
 import { renderPlans } from '../panels/planos.js';
-import { save } from '../core/storage.js';
+import { isStale, persistNow, save } from '../core/storage.js';
 import { ask, closePanel, renderAll, renderTop, toast } from '../ui/app.js';
 import { floorsVars } from '../plans/floors.js';
 import { needVecInBackground, pathCache } from '../detect/vector.js';
@@ -19,10 +19,31 @@ import { hasAlt, prepareAlt, syncAltFloors } from '../plans/altA.js';
 import { syncSealDiams } from '../panels/sellos.js';
 import { alignPending } from '../plans/floors.js';
 import { autoWalls } from '../detect/wall.js';
+import { destroyPdf, openPdf } from '../plans/load.js';
 
 /* --- abrir hojas --- */
+/* Liberar memoria: el navegador no devuelve toda la memoria que usa al preparar cada plano, así que después de
+   abrir varios planos distintos la página se recarga sola (se guarda todo antes) y abre el plano pedido.
+   Así la app no va acumulando memoria hasta trabar una computadora de 4 u 8 GB. */
+const opened = new Set();
+const MEM_LIMIT = isMobile ? 3 : LITE ? 4 : 6;
+async function freeMemoryAndOpen(id) {
+  if (isStale() || opened.has(id) || opened.size < MEM_LIMIT) return false;
+  try {
+    P.active = id; P.last = id;
+    await persistNow();
+    sessionStorage.setItem('cf-mem-reload', '1');
+  } catch (e) { return false; }
+  toast('Liberando memoria…');
+  location.reload();
+  return true;
+}
+export function memReloadNotice() {
+  try { if (sessionStorage.getItem('cf-mem-reload')) { sessionStorage.removeItem('cf-mem-reload'); toast('Se liberó memoria (la app se recarga sola después de abrir varios planos).'); } } catch (e) {}
+}
 export async function openSheet(id, opt = {}) {
   const sh = P.sheets[id]; if (!sh) return;
+  if (!opt.quiet) { if (await freeMemoryAndOpen(id)) return; opened.add(id); }
   // opt.quiet: se abre por detrás sin salir del inicio (para completar datos de varios planos seguidos)
   commitShared(); if (!opt.quiet) hideHome();
   if (P.active !== id) setViewLevel(null);
@@ -88,7 +109,7 @@ export async function addArqFiles(list) {
     const fid = await storeFile(f, f.name);
     let pages = 1;
     if (isPdfFile(f)) await pdfReady().catch(() => null);
-    if (isPdfFile(f) && pdfjsLib) { try { const d = await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise; pages = d.numPages; d.destroy && d.destroy(); } catch (e) {} }
+    if (isPdfFile(f) && pdfjsLib) { try { const d = await openPdf(f, true); pages = d.numPages; destroyPdf(d); } catch (e) {} }
     let use = [1];
     if (pages > 1) {
       const all = await ask({title:'PDF con varias páginas', body:`"${f.name}" tiene ${pages} páginas. ¿Agrega cada página como una hoja de arquitectónicos?`, buttons:[{label:'Solo la primera', value:'one'}, {label:'Todas las páginas', value:'all', primary:true}]});

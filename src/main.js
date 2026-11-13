@@ -17,7 +17,8 @@ import { init as initEditorPointer } from './editor/pointer.js';
 import { init as initCanvasView } from './canvas/view.js';
 import { init as initEditorKeyboard } from './editor/keyboard.js';
 import { init as initCoreUndo } from './core/undo.js';
-import { init as initPlansLoad } from './plans/load.js';
+import { init as initPlansLoad, pdfDocCount, resetPdfWorker } from './plans/load.js';
+import { rtCache } from './project/files.js';
 import { init as initPanelsPlanos } from './panels/planos.js';
 import { init as initPanelsCapas } from './panels/capas.js';
 import { init as initPanelsSellos } from './panels/sellos.js';
@@ -72,4 +73,4 @@ registerPWA();
 handleLaunchFiles();
 
 // Solo en desarrollo (o con DEBUG_HOOK=1 al compilar): acceso al estado desde la consola.
-if (__DEBUG__) window.__dbg = () => ({S, P, RT, view, openSheet, curSheet, vector, renderAll});
+if (__DEBUG__) window.__dbg = () => ({S, P, RT, view, openSheet, curSheet, vector, renderAll, resetPdfWorker, mem: () => { const sz = c => c && c.width ? Math.round(c.width*c.height*4/1e6) : 0; const ent = r => r ? {bmp: sz(r.bmp), tinted: r.tinted && r.tinted !== r.bmp ? sz(r.tinted) : 0, hl: sz(r.hl && r.hl.c), vec: r.vec ? 1 : 0, pdf: r.pdf ? 1 : 0} : null; return {docs: pdfDocCount(), cache: [...rtCache.values()].map(ent), RT: Object.fromEntries(Object.entries(RT).map(([k, v]) => [k, ent(v)])), canv: document.querySelectorAll('canvas').length}; }});
