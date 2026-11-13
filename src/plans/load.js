@@ -110,6 +110,30 @@ export async function ensurePdf(rt) {
 }
 /* Prepara en segundo plano un plano que todavía no se ha abierto: imagen del plano, vista previa
    y, si hace falta, la lectura vectorial para la detección. Así después abre al instante. */
+/* Solo la vista previa de la galería, dibujada directamente a tamaño pequeño: no genera la imagen grande del plano
+   (que en planos pesados congelaba la computadora al prepararlos todos desde el inicio). */
+export async function prepareThumb(fileId, page) {
+  page = page || 1;
+  if (await DB.has(thumbKey(fileId, page))) return false;
+  const rec = await DB.get('file:' + fileId);
+  if (!rec || !rec.blob) return false;
+  const isPdf = rec.blob.type === 'application/pdf' || /\.pdf$/i.test(rec.name || '');
+  if (!isPdf) { const img = await loadImage(rec.blob); await makeThumb(img.naturalWidth ? Object.assign(img, {width:img.naturalWidth, height:img.naturalHeight}) : img, fileId, page); return true; }
+  const cached = await DB.get(renderKey(fileId, page));
+  if (cached && cached.blob) { const bm = await createImageBitmap(cached.blob); await makeThumb(bm, fileId, page); bm.close(); return true; }
+  const pdf = await openPdf(rec.blob, true);
+  try {
+    const pg = await pdf.getPage(Math.min(Math.max(1, page), pdf.numPages)), v1 = pg.getViewport({scale:1});
+    const vp = pg.getViewport({scale: Math.min(2, 700/Math.max(v1.width, v1.height))});
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.floor(vp.width)); c.height = Math.max(1, Math.floor(vp.height));
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    await pg.render({canvasContext:x, viewport:vp}).promise;
+    await makeThumb(c, fileId, page);
+    c.width = c.height = 0;
+    return true;
+  } finally { destroyPdf(pdf); }
+}
+
 export async function prepareFile(fileId, page, opt = {}) {
   page = page || 1;
   const needRender = !(await DB.has(renderKey(fileId, page))), needThumb = !(await DB.has(thumbKey(fileId, page)));

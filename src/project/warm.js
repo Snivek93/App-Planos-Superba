@@ -1,14 +1,28 @@
-/* Trabajo en segundo plano mientras se ve el inicio del proyecto: prepara los planos que todavía
-   no se han abierto (imagen del plano, vista previa y lectura vectorial) uno por uno, para que
-   después abran rápido. Se detiene en cuanto se abre un plano. También administra las vistas previas. */
+/* Trabajo en segundo plano mientras se ve el inicio del proyecto: hace las vistas previas que faltan, una por una
+   y a tamaño pequeño, y deja listo (imagen del plano y lectura vectorial) solo el último plano abierto.
+   Antes preparaba la imagen grande de todos los planos, y en proyectos con muchos planos pesados la computadora
+   se quedaba pegada. Espera a que el usuario no esté usando la página y se detiene en cuanto se abre un plano.
+   También administra las vistas previas. */
 import { P } from '../core/state.js';
 import { DB } from '../core/storage.js';
 import { homeOn } from './model.js';
-import { prepareFile, thumbKey } from '../plans/load.js';
+import { prepareFile, prepareThumb, thumbKey } from '../plans/load.js';
 
 const done = new Set();
 let running = false;
 
+let lastInput = 0;
+for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'scroll', 'touchstart']) addEventListener(ev, () => { lastInput = Date.now(); }, {passive:true, capture:true});
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function quiet() { while (Date.now() - lastInput < 1500) await sleep(400); }
+function nearView(id) {
+  const el = document.querySelector(`[data-sheet="${CSS.escape(id)}"]`);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.bottom > -innerHeight*0.5 && r.top < innerHeight*1.5;
+}
+let scrollT = 0;
+addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => { if (homeOn && P) warmUp(); }, 600); }, {passive:true, capture:true});
 function idle() { return new Promise(r => (window.requestIdleCallback || (f => setTimeout(f, 200)))(() => r(), {timeout:1500})); }
 
 function jobs() {
@@ -17,8 +31,10 @@ function jobs() {
     const pl = sh.kind === 'arq' ? sh.state.plans.A : sh.state.plans.B;
     if (!pl || !pl.fileId) continue;
     const vec = sh.kind === 'arq' ? (sh.state.auto.fire || []).length > 0 : (sh.state.auto.pipes || []).length > 0;
-    const key = pl.fileId + '#' + (pl.page || 1) + (vec ? '+v' : '');
-    if (!done.has(key)) out.push({key, fileId:pl.fileId, page:pl.page || 1, vec, last: P.last === sh.id});
+    const last = P.last === sh.id;
+    if (!last && !nearView(sh.id)) continue; // las vistas previas, solo de las fichas que se ven en pantalla
+    const key = pl.fileId + '#' + (pl.page || 1) + (last ? (vec ? '+v' : '+r') : '');
+    if (!done.has(key)) out.push({key, fileId:pl.fileId, page:pl.page || 1, vec, last});
   }
   // primero el último abierto, después el resto
   return out.sort((a, b) => b.last - a.last);
@@ -32,7 +48,8 @@ export async function warmUp() {
     while (homeOn && P) {
       const j = jobs()[0]; if (!j) break;
       done.add(j.key);
-      try { await prepareFile(j.fileId, j.page, {vec:j.vec}); } catch (e) { console.warn('No se pudo preparar el plano', e); }
+      await quiet(); if (!homeOn || !P) break;
+      try { if (j.last) await prepareFile(j.fileId, j.page, {vec:j.vec}); else await prepareThumb(j.fileId, j.page); } catch (e) { console.warn('No se pudo preparar el plano', e); }
       await idle();
     }
   } finally { running = false; }

@@ -9,6 +9,7 @@ import { ask, renderAll, toast } from '../ui/app.js';
 import { zipStore } from '../export/firestop.js';
 import { arqState, blankState, clone, guessType, hydrate, migrateCats, modelVars, newProjectData, normState, pid, RT_BLANK, showHome, stripExt } from './model.js';
 import { rtCache, storeFile, usedFiles } from './files.js';
+import { thumbKey } from '../plans/load.js';
 import { commitShared, isSharedLayer } from './shared.js';
 import { clearExtras } from '../plans/extraA.js';
 import { openSheet } from './sheets.js';
@@ -30,7 +31,7 @@ export async function unzip(u8) {
     let data = u8.subarray(start, start + csize);
     if (method === 8) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
     else if (method !== 0) throw new Error('El .zip usa una compresión que no se puede leer.');
-    const m = name.match(/(proyecto\.json|archivos\/[^/]+)$/);
+    const m = name.match(/(proyecto\.json|archivos\/[^/]+|vistas\/[^/]+)$/);
     out.set(m ? m[1] : name, data);
   }
   return out;
@@ -48,8 +49,18 @@ export async function saveProject() {
     meta[id] = {name:rec.name, type:rec.blob.type || guessType(rec.name), size:rec.blob.size};
   }
   P.files = meta;
+  // vistas previas de la galería: van en el .zip para que al abrirlo no haya que volver a dibujarlas
+  const thumbs = [];
+  for (const sh of Object.values(P.sheets)) {
+    const pl = sh.kind === 'arq' ? sh.state.plans.A : sh.state.plans.B;
+    if (!pl || !pl.fileId) continue;
+    const pg = pl.page || 1, name = `vistas/${pl.fileId}-${pg}.jpg`;
+    if (thumbs.some(t => t[0] === name)) continue;
+    const rec = await DB.get(thumbKey(pl.fileId, pg));
+    if (rec && rec.blob) thumbs.push([name, new Uint8Array(await rec.blob.arrayBuffer())]);
+  }
   const o = JSON.parse(JSON.stringify(P)); o.guardado = new Date().toISOString();
-  const blob = zipStore([['proyecto.json', JSON.stringify(o)], ...files], 'application/zip');
+  const blob = zipStore([['proyecto.json', JSON.stringify(o)], ...files, ...thumbs], 'application/zip');
   await saveFile(baseName() + '.zip', blob, 'application/zip');
   if (missing) toast(`Atención: faltan ${missing} archivos de planos en este navegador; el proyecto se guardó sin ellos.`);
 }
@@ -100,6 +111,10 @@ export async function openProject(file) {
       for (const [name, data] of entries || []) if (name.startsWith('archivos/')) {
         const id = name.slice(9), m = (o.files || {})[id] || {};
         await DB.put('file:' + id, {blob:new Blob([data], {type:m.type || guessType(m.name || '')}), name:m.name || id});
+      }
+      for (const [name, data] of entries || []) {
+        const v = name.match(/(?:^|\/)vistas\/(.+)-(\d+)\.jpg$/);
+        if (v && (o.files || {})[v[1]]) await DB.put(thumbKey(v[1], +v[2]), {blob:new Blob([data], {type:'image/jpeg'})});
       }
       hydrate(o);
     } else {
