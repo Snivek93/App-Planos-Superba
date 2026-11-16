@@ -39,7 +39,7 @@ export function apT(m, x, y) { return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y +
 /* Lee los trazos y rellenos del PDF. Es lento en planos grandes (segundos), por eso el
    resultado se guarda en el navegador y la próxima vez se abre al instante. */
 const VEC_V = 3; // 3: guarda la transparencia de los rellenos
-function vecKey(fileId, page) { return `vec:${fileId}#${page || 1}#v${VEC_V}`; }
+export function vecKey(fileId, page) { return `vec:${fileId}#${page || 1}#v${VEC_V}`; }
 
 export async function extractVec(pdf, pageNo) {
   const pg = await pdf.getPage(pageNo);

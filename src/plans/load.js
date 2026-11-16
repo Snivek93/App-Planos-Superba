@@ -84,20 +84,33 @@ function pdfWorker() {
   if (!sharedWorker || sharedWorker.destroyed) sharedWorker = new pdfjsLib.PDFWorker({name: 'planos'});
   return sharedWorker;
 }
+let opening = 0;
 export async function openPdf(blob, own = false) {
   await pdfReady().catch(() => null);
   if (!pdfjsLib) throw new Error('No se pudo cargar el lector de PDF. Recargue la página.');
-  const task = pdfjsLib.getDocument({data: new Uint8Array(await blob.arrayBuffer()), worker: pdfWorker()});
-  const doc = await task.promise;
-  openDocs.set(doc, {t: Date.now(), own});
-  return doc;
+  opening++;
+  try {
+    const data = new Uint8Array(await blob.arrayBuffer());
+    const task = pdfjsLib.getDocument({data, worker: pdfWorker()});
+    const doc = await task.promise;
+    openDocs.set(doc, {t: Date.now(), own});
+    return doc;
+  } finally { opening--; }
+}
+/* El lector (worker) guarda en su propia memoria lo que leyó de cada PDF y, aunque el documento se cierre, no la
+   devuelve mientras siga vivo: después de preparar varias láminas quedaban gigas ocupados sin estar haciendo nada.
+   Cuando no queda ningún PDF abierto se apaga el lector (se vuelve a crear solo al abrir el siguiente PDF). */
+function releaseWorkerWhenIdle() {
+  if (openDocs.size || opening || !sharedWorker) return;
+  try { sharedWorker.destroy(); } catch (e) {}
+  sharedWorker = null;
 }
 export function pdfDocCount() { return openDocs.size; }
 export function resetPdfWorker() { for (const d of [...openDocs.keys()]) destroyPdf(d); if (sharedWorker) { sharedWorker.destroy(); sharedWorker = null; } }
 export function destroyPdf(doc) {
   if (!doc) return;
   openDocs.delete(doc);
-  try { doc.destroy && doc.destroy(); } catch (e) {}
+  try { const r = doc.destroy && doc.destroy(); if (r && r.then) r.then(releaseWorkerWhenIdle, releaseWorkerWhenIdle); else releaseWorkerWhenIdle(); } catch (e) { releaseWorkerWhenIdle(); }
 }
 /* cierra los PDF que ya no usa ningún plano en memoria (los recién abiertos se dejan un rato, por si se están cargando) */
 export function closeOrphanPdfs(inUse) {

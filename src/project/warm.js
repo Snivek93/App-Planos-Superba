@@ -7,6 +7,7 @@ import { P } from '../core/state.js';
 import { DB } from '../core/storage.js';
 import { homeOn } from './model.js';
 import { prepareFile, prepareThumb, thumbKey } from '../plans/load.js';
+import { autoBusy } from '../auto/run.js';
 
 const done = new Set();
 let running = false;
@@ -46,9 +47,11 @@ export async function warmUp() {
   try {
     await idle();
     while (homeOn && P) {
+      if (autoBusy()) break;   // durante el cálculo automático no se preparan vistas previas (compiten por memoria)
       const j = jobs()[0]; if (!j) break;
       done.add(j.key);
       await quiet(); if (!homeOn || !P) break;
+      if (autoBusy()) { done.delete(j.key); break; }
       try { if (j.last) await prepareFile(j.fileId, j.page, {vec:j.vec}); else await prepareThumb(j.fileId, j.page); } catch (e) { console.warn('No se pudo preparar el plano', e); }
       await idle();
     }

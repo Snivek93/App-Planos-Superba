@@ -35,6 +35,8 @@ import { init as initHomeDragdrop } from './home/dragdrop.js';
 import { init as initHomeEmpty } from './home/empty.js';
 import { init as initProjectWallsweep } from './project/wallsweep.js';
 import { init as initBoot } from './boot.js';
+import { init as initAuto, autoFromFiles, startJob, showReport } from './auto/run.js';
+import { arqContext } from './auto/walls.js';
 import { registerPWA, handleLaunchFiles } from './pwa.js';
 import { S, P, RT, view } from './core/state.js';
 import { openSheet } from './project/sheets.js';
@@ -68,9 +70,10 @@ initHomeDragdrop();
 initHomeEmpty();
 initProjectWallsweep();
 initBoot();
+initAuto();
 
 registerPWA();
 handleLaunchFiles();
 
 // Solo en desarrollo (o con DEBUG_HOOK=1 al compilar): acceso al estado desde la consola.
-if (__DEBUG__) window.__dbg = () => ({S, P, RT, view, openSheet, curSheet, vector, renderAll, resetPdfWorker, mem: () => { const sz = c => c && c.width ? Math.round(c.width*c.height*4/1e6) : 0; const ent = r => r ? {bmp: sz(r.bmp), tinted: r.tinted && r.tinted !== r.bmp ? sz(r.tinted) : 0, hl: sz(r.hl && r.hl.c), vec: r.vec ? 1 : 0, pdf: r.pdf ? 1 : 0} : null; return {docs: pdfDocCount(), cache: [...rtCache.values()].map(ent), RT: Object.fromEntries(Object.entries(RT).map(([k, v]) => [k, ent(v)])), canv: document.querySelectorAll('canvas').length}; }});
+if (__DEBUG__) window.__dbg = () => ({arqContext, autoFromFiles, startJob, showReport, S, P, RT, view, openSheet, curSheet, vector, renderAll, resetPdfWorker, mem: () => { const sz = c => c && c.width ? Math.round(c.width*c.height*4/1e6) : 0; const ent = r => r ? {bmp: sz(r.bmp), tinted: r.tinted && r.tinted !== r.bmp ? sz(r.tinted) : 0, hl: sz(r.hl && r.hl.c), vec: r.vec ? 1 : 0, pdf: r.pdf ? 1 : 0} : null; return {docs: pdfDocCount(), cache: [...rtCache.values()].map(ent), RT: Object.fromEntries(Object.entries(RT).map(([k, v]) => [k, ent(v)])), canv: document.querySelectorAll('canvas').length}; }});

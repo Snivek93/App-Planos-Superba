@@ -16,6 +16,7 @@ import { addArqPick, closeSheet, newPairDialog, openSheet, sheetDialog } from '.
 import { goSeal, homeView, penetrantesVars, penF, penHtml, penSort, renderPenTable } from './penetrantes.js';
 import { newProject, saveProject } from '../project/archive.js';
 import { fillThumbs, warmUp } from '../project/warm.js';
+import { autoDialog } from '../auto/run.js';
 
 /* --- inicio del proyecto --- */
 /* los totales cuentan pared, losa o ambos según lo elegido para el grupo del plano (locFor) */
@@ -99,7 +100,7 @@ export function renderProject() {
     body.innerHTML = `<div class="hwelcome"><input class="hname" data-pa="pname" value="${esc(P.name)}" aria-label="Nombre del proyecto">
       <h2>Empiece con los arquitectónicos</h2>
       <p>Suba las plantas de paredes (plano A). Ahí se marcan las paredes cortafuego una sola vez. Después, cada plano eléctrico, mecánico o de supresión elige su arquitectónico de la lista y se le sube el plano de instalaciones.</p>
-      <div class="btnrow"><button class="btn primary" data-pa="addArq">Agregar arquitectónicos</button><button class="btn" data-pa="openProj">Abrir proyecto guardado (.zip)</button></div>
+      <div class="btnrow"><button class="btn primary" data-pa="addArq">Agregar arquitectónicos</button><button class="btn" data-pa="auto" title="Entregar un juego de planos completo y calcular los sellos automáticamente">Automático: juego de planos</button><button class="btn" data-pa="openProj">Abrir proyecto guardado (.zip)</button></div>
       <p class="muted small" style="margin:12px 0 0">PDF o imagen. También puede arrastrarlos a esta pantalla.</p></div>`;
     return;
   }
@@ -111,7 +112,7 @@ export function renderProject() {
     return `<span class="hchip">${esc(s.name)} <b>${per[s.id]}</b></span>${subs}`; }).join('');
   let h = `<div class="hhead"><div><input class="hname" data-pa="pname" value="${esc(P.name)}" aria-label="Nombre del proyecto">
       <div class="hsum"><span class="hbig">${total}</span><div><h3>${total === 1 ? 'Sello' : 'Sellos'} para cuantificar${locMixed() ? ' (pared o losa según cada grupo)' : locView() === 'pared' ? ' en pared' : locView() === 'losa' ? ' en losa' : ''}</h3><div class="small muted">${pairs.length} ${pairs.length === 1 ? 'plano de instalaciones' : 'planos de instalaciones'} · ${arqs.length} ${arqs.length === 1 ? 'arquitectónico' : 'arquitectónicos'}</div>${chips ? `<div class="hchips">${chips}</div>` : ''}</div></div></div>
-    <div class="hacts"><div class="seg hsort" role="group" aria-label="Ordenar planos">${[['az', 'A → Z'], ['za', 'Z → A'], ['fecha', 'Por fecha']].map(([v, t]) => `<button data-pa="sort" data-v="${v}" class="${(P.sort || 'az') === v ? 'on' : ''}" title="Ordenar los planos ${v === 'fecha' ? 'en el orden en que se agregaron' : 'alfabéticamente'}">${t}</button>`).join('')}</div><div class="seg hlay" role="group" aria-label="Vista de los planos">${[['grid', 'Galería', ICON.grid], ['list', 'Lista', ICON.list]].map(([v, t, ic]) => `<button data-pa="layout" data-v="${v}" class="${(P.layout || 'grid') === v ? 'on' : ''}" title="Ver como ${t.toLowerCase()}" aria-label="${t}">${ic}<span class="hide-sm">${t}</span></button>`).join('')}</div><button class="btn" data-pa="newPair">＋ Nuevo plano</button><button class="btn primary" data-pa="fss">Excel para Firestop Suite</button></div></div>`;
+    <div class="hacts"><div class="seg hsort" role="group" aria-label="Ordenar planos">${[['az', 'A → Z'], ['za', 'Z → A'], ['fecha', 'Por fecha']].map(([v, t]) => `<button data-pa="sort" data-v="${v}" class="${(P.sort || 'az') === v ? 'on' : ''}" title="Ordenar los planos ${v === 'fecha' ? 'en el orden en que se agregaron' : 'alfabéticamente'}">${t}</button>`).join('')}</div><div class="seg hlay" role="group" aria-label="Vista de los planos">${[['grid', 'Galería', ICON.grid], ['list', 'Lista', ICON.list]].map(([v, t, ic]) => `<button data-pa="layout" data-v="${v}" class="${(P.layout || 'grid') === v ? 'on' : ''}" title="Ver como ${t.toLowerCase()}" aria-label="${t}">${ic}<span class="hide-sm">${t}</span></button>`).join('')}</div><button class="btn" data-pa="auto" title="Entregar un juego de planos y calcular los sellos automáticamente">Automático</button><button class="btn" data-pa="newPair">＋ Nuevo plano</button><button class="btn primary" data-pa="fss">Excel para Firestop Suite</button></div></div>`;
   const nSeals = Object.values(T).reduce((a, t) => a + t.seals, 0);
   h += `<div class="hbar"><div class="seg hview" role="tablist">${[['plans', 'Planos'], ['pen', 'Penetrantes']].map(([v, t]) => `<button data-pa="hview" data-v="${v}" role="tab" class="${homeView === v ? 'on' : ''}">${t}${v === 'pen' ? `<span class="n">${total}</span>` : ''}</button>`).join('')}</div><div class="seg hloc" role="group" aria-label="Qué sellos contar">${[['', 'Pared y losa'], ['pared', 'Solo pared'], ['losa', 'Solo losa']].map(([v, t]) => `<button data-pa="locView" data-v="${v}" class="${!locMixed() && locView() === v ? 'on' : ''}" title="Contar ${v ? 'solo los sellos en ' + v : 'los sellos en pared y en losa'} en todos los grupos">${t}</button>`).join('')}${locMixed() ? '<span class="hlocmix" title="Cada grupo tiene su propia elección (selector junto al total de cada sección o subsección)">Por grupo</span>' : ''}</div></div>`;
   if (homeView === 'pen') { body.innerHTML = h + penHtml(); renderPenTable(); return; }
@@ -181,6 +182,7 @@ export function init() {
     else if (a === 'layout') { P.layout = b.dataset.v; save(); renderProject(); }
     else if (a === 'locView') { P.locView = b.dataset.v || ''; P.locBy = {}; penetrantesVars.penF.loc = ''; save(); renderProject(); }
     else if (a === 'sort') { P.sort = b.dataset.v; save(); renderProject(); renderTop(); }
+    else if (a === 'auto') autoDialog();
     else if (a === 'fss') fsDialog();
     else if (a === 'quant') exportQuant('all');
     else if (a === 'saveProj') saveProject();

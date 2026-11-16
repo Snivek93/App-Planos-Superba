@@ -9,6 +9,7 @@ import { autoWalls, wallsPending } from '../detect/wall.js';
 import { homeHooks, homeOn, scopeSheets, showHome } from './model.js';
 import { closeSheet, openSheet } from './sheets.js';
 import { renderProject } from '../home/home.js';
+import { autoBusy } from '../auto/run.js';
 
 let running = null;
 const tried = new Set();   // planos que ya se intentaron en esta sesión (si el plano A no carga no se reintenta sin fin)
@@ -55,5 +56,5 @@ export function sweepWalls({quiet = false, all = false} = {}) {
 
 /* al llegar al inicio: si hay planos con sellos de pared sin tipo, se completan solos */
 export function init() {
-  homeHooks.onShow = () => { if (P && pendingWallSheets().length) sweepWalls({quiet: true}); };
+  homeHooks.onShow = () => { if (P && !P.autoJob && !autoBusy() && pendingWallSheets().length) sweepWalls({quiet: true}); };
 }
